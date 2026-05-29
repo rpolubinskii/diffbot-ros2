@@ -1,0 +1,101 @@
+DiffBot Project Robot Memory
+============================
+
+Purpose
+-------
+This file is living project-local robot memory for Codex and other agents
+working in this repository. Read it before using ROS MCP, connecting through
+rosbridge, or issuing robot commands. Update it whenever new movement behavior,
+constraints, reliable procedures, limits, or failure modes are learned.
+
+This is plain text operating context. It is not currently a ros-mcp verified
+robot specification file, though ros-mcp robot specifications may be useful as
+conceptual references for future structure.
+
+Robot Identity
+--------------
+- Robot: real physical ROS 2 Humble differential-drive DiffBot-like robot.
+- ROS bridge endpoint: 192.168.0.147:9090.
+- Expected connection path: use ROS MCP through rosbridge.
+- Before assuming graph state, connect and inspect ROS nodes, topics, services,
+  actions, and message types.
+
+MCP Usage
+---------
+- Use ROS MCP tools to connect to the robot at 192.168.0.147:9090.
+- Verify the live ROS graph before making assumptions about available topics,
+  action servers, services, frames, or message types.
+- Prefer bounded, observable operations. Subscribe to relevant telemetry when
+  validating motion or localization behavior.
+- Do not treat this file as a substitute for live graph inspection.
+
+Motion Policy
+-------------
+- Motion commands are allowed without extra confirmation when the user asks for
+  robot operation.
+- Use bounded durations for velocity commands.
+- Send explicit stop commands after movement tests.
+- Keep initial tests conservative and increase only after observing reliable
+  behavior.
+- Prefer small, reversible movement recipes when exploring unknown behavior.
+
+Caution Policy
+--------------
+The following still require an explicit user request or confirmation:
+
+- Firmware upload or redeploy scripts.
+- udev rule installation or system device-rule changes.
+- Destructive resets or commands that discard state.
+- Full robot stack relaunches.
+- Any operation that assumes the robot hardware is physically safe to restart.
+
+Control Surfaces
+----------------
+Known or expected control surfaces include:
+
+- /cmd_vel: velocity command input.
+- /cmd_vel_smoothed: smoothed velocity command path when available.
+- Nav2 actions: navigation goals and behavior actions when the Nav2 stack is
+  active.
+- /start_motor: service or topic used to enable motor operation when present.
+- /stop_motor: service or topic used to stop or disable motor operation when
+  present.
+
+Always verify exact types and availability on the live ROS graph before use.
+
+Sensors And Localization
+------------------------
+- RGB-D camera: Intel RealSense.
+- 2D lidar: RPLidar publishing scan data, expected on /scan.
+- External IMU and encoders: NodeMCU-connected ICM-20948 IMU and wheel encoder
+  data routed through the ros2_control hardware interface.
+- EKF odometry: /odom from robot_localization is the primary fused odometry
+  output when active.
+- RTAB-Map ICP odometry: /rtabmap/icp_odom has been observed as a stable yaw
+  reference.
+- External IMU frame: imu_link.
+- Robot base frame is generally base_footprint, while some Nav2 parameters may
+  still reference base_link. Check frame consistency before changing
+  localization or navigation behavior.
+
+Known Odometry Lesson
+---------------------
+RealSense yaw can drift. External IMU and magnetometer data are useful for
+diagnostics, but should not be blindly trusted as EKF heading input. Validate
+signs, units, frame alignment, covariance, and drift behavior before changing
+heading fusion.
+
+Movement Memory
+---------------
+Append tested movement recipes here. Include:
+
+- Date and operator or agent.
+- Command surface used.
+- Exact command, duration, and stop command.
+- Starting conditions and relevant ROS graph state.
+- Observed outcome.
+- Limits, failure modes, and recovery steps.
+
+Entries:
+
+- No tested movement recipes recorded yet.
