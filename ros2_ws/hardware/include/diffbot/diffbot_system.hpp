@@ -156,6 +156,12 @@ namespace diffbot {
         std::string rx_buffer_;
         std::array<char, 256> temp_rx_ = {};
         std::atomic<bool> running_{false};
+        std::atomic<std::uint64_t> serial_line_count_{0};
+        std::atomic<std::uint64_t> serial_parse_reject_count_{0};
+        std::atomic<std::uint64_t> serial_encoder_sample_count_{0};
+        std::atomic<std::uint64_t> serial_imu_sample_count_{0};
+        std::atomic<std::uint64_t> serial_mag_sample_count_{0};
+        std::atomic<std::uint64_t> serial_last_field_count_{0};
 
         void start_async_read();
 

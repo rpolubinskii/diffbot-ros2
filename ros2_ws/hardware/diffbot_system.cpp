@@ -454,6 +454,12 @@ namespace diffbot {
         io_read_.restart();
         io_write_.restart();
         rx_buffer_.clear();
+        serial_line_count_ = 0;
+        serial_parse_reject_count_ = 0;
+        serial_encoder_sample_count_ = 0;
+        serial_imu_sample_count_ = 0;
+        serial_mag_sample_count_ = 0;
+        serial_last_field_count_ = 0;
         {
             std::lock_guard encoder_lock(encoder_mutex_);
             left_ticks_ = 0;
@@ -785,13 +791,17 @@ namespace diffbot {
 
     void DiffBotSystemHardware::parse_encoder_line(const std::string &line) {
         const auto fields = split_csv_line(trim_copy(line));
+        ++serial_line_count_;
+        serial_last_field_count_ = fields.size();
         if (fields.size() != 2 && fields.size() != 8 && fields.size() != 11) {
+            ++serial_parse_reject_count_;
             return;
         }
 
         int left_ticks = 0;
         int right_ticks = 0;
         if (!parse_int_field(fields[0], left_ticks) || !parse_int_field(fields[1], right_ticks)) {
+            ++serial_parse_reject_count_;
             return;
         }
 
@@ -812,6 +822,7 @@ namespace diffbot {
                 !parse_double_field(fields[6], gy_dps) ||
                 !parse_double_field(fields[7], gz_dps)
             ) {
+                ++serial_parse_reject_count_;
                 return;
             }
 
@@ -832,6 +843,7 @@ namespace diffbot {
                     !parse_double_field(fields[9], my_ut) ||
                     !parse_double_field(fields[10], mz_ut)
                 ) {
+                    ++serial_parse_reject_count_;
                     return;
                 }
 
@@ -849,11 +861,16 @@ namespace diffbot {
             left_ticks_ += left_ticks;
             right_ticks_ += right_ticks;
         }
+        ++serial_encoder_sample_count_;
 
         if (imu_sample.valid) {
             std::lock_guard lock(imu_mutex_);
             imu_sample.sequence = latest_imu_sample_.sequence + 1;
             latest_imu_sample_ = imu_sample;
+            ++serial_imu_sample_count_;
+            if (imu_sample.mag_valid) {
+                ++serial_mag_sample_count_;
+            }
         }
     }
 
@@ -924,7 +941,9 @@ namespace diffbot {
                 // 0 left_cmd_rad_s, 1 right_cmd_rad_s, 2 left_meas_rad_s, 3 right_meas_rad_s,
                 // 4 left_ff_pwm, 5 right_ff_pwm, 6 left_pid_corr_pwm, 7 right_pid_corr_pwm,
                 // 8 left_out_pwm, 9 right_out_pwm,
-                // 10 regime_id (0 straight, 1 arc, 2 spin), 11 abs(cmd_left-cmd_right)
+                // 10 regime_id (0 straight, 1 arc, 2 spin), 11 abs(cmd_left-cmd_right),
+                // 12 serial lines, 13 parse rejects, 14 encoder samples,
+                // 15 IMU samples, 16 mag samples, 17 last serial field count.
                 // For linear mapper without PID: ff == out, pid_corr == 0
                 msg.data = {
                     cmd_left, cmd_right,
@@ -933,7 +952,13 @@ namespace diffbot {
                     left_pid_corr_pwm, right_pid_corr_pwm,
                     static_cast<double>(left_pwm), static_cast<double>(right_pwm),
                     regime_to_double(regime),
-                    cmd_abs_delta
+                    cmd_abs_delta,
+                    static_cast<double>(serial_line_count_.load()),
+                    static_cast<double>(serial_parse_reject_count_.load()),
+                    static_cast<double>(serial_encoder_sample_count_.load()),
+                    static_cast<double>(serial_imu_sample_count_.load()),
+                    static_cast<double>(serial_mag_sample_count_.load()),
+                    static_cast<double>(serial_last_field_count_.load())
                 };
                 debug_pub_->publish(msg);
             }
