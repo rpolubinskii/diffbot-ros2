@@ -6,4 +6,4 @@ sudo cp 99-ros.rules /etc/udev/rules.d
 sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=tty --action=add
 sleep 1
-ls -l /dev/rplidar /dev/imu-encoder-node /dev/motor-controller
+ls -l /dev/rplidar /dev/respeaker /dev/imu-encoder-node /dev/motor-controller
