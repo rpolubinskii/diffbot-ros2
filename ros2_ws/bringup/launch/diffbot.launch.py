@@ -46,9 +46,17 @@ def generate_launch_description():
             description="Pause RTAB-Map/ICP and stop the RPLidar motor when Nav2 has no active goals.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "standby_scan_topic",
+            default_value="/diffbot/standby_scan",
+            description="Managed scan topic used by RTAB-Map and ICP when lidar standby is enabled.",
+        )
+    )
 
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
     manage_lidar_standby = LaunchConfiguration("manage_lidar_standby")
+    standby_scan_topic = LaunchConfiguration("standby_scan_topic")
 
     rplidar_pkg = get_package_share_directory('rplidar_ros')
 
@@ -232,6 +240,12 @@ def generate_launch_description():
         ('odom_info', '/rtabmap/icp_odom_info'),
         ('scan', '/scan')]
 
+    managed_icp_odometry_remappings = [
+        ('imu', '/imu/external/data_body'),
+        ('odom', '/rtabmap/icp_odom'),
+        ('odom_info', '/rtabmap/icp_odom_info'),
+        ('scan', standby_scan_topic)]
+
     # Make sure IR emitter is enabled
     depth_module = SetParameter(name='depth_module.emitter_enabled', value=1)
 
@@ -322,14 +336,35 @@ def generate_launch_description():
         executable='icp_odometry',
         name='icp_odometry',
         output='screen',
+        condition=UnlessCondition(manage_lidar_standby),
         parameters=icp_odometry_parameters,
         remappings=icp_odometry_remappings,
     )
 
+    managed_icp_odometry = Node(
+        package='rtabmap_odom',
+        executable='icp_odometry',
+        name='icp_odometry',
+        output='screen',
+        condition=IfCondition(manage_lidar_standby),
+        parameters=icp_odometry_parameters,
+        remappings=managed_icp_odometry_remappings,
+    )
+
     rtabmap_slam = Node(
         package='rtabmap_slam', executable='rtabmap', output='screen',
+        condition=UnlessCondition(manage_lidar_standby),
         parameters=rtabmap_parameters,
         remappings=rtabmap_remappings,
+        arguments=['-d'])
+
+    managed_rtabmap_remappings = rtabmap_remappings + [('scan', standby_scan_topic)]
+
+    managed_rtabmap_slam = Node(
+        package='rtabmap_slam', executable='rtabmap', output='screen',
+        condition=IfCondition(manage_lidar_standby),
+        parameters=rtabmap_parameters,
+        remappings=managed_rtabmap_remappings,
         arguments=['-d'])
 
     lidar_standby_manager = Node(
@@ -348,13 +383,9 @@ def generate_launch_description():
             'pause_odom_service': '/pause_odom',
             'resume_odom_service': '/resume_odom',
             'scan_topic': '/scan',
-            'manage_consumer_log_levels': True,
-            'idle_consumer_log_level': 'error',
-            'active_consumer_log_level': 'info',
-            'rtabmap_logger_service': '/rtabmap/set_logger_levels',
-            'icp_odom_logger_service': '/icp_odometry/set_logger_levels',
-            'rtabmap_logger_name': 'rtabmap',
-            'icp_odom_logger_name': 'icp_odometry',
+            'managed_scan_topic': standby_scan_topic,
+            'publish_standby_scan_heartbeat': True,
+            'standby_scan_heartbeat_hz': 1.0,
         }],
     )
 
@@ -380,7 +411,9 @@ def generate_launch_description():
         rplidar,
         # rgbd_odometry,
         icp_odometry,
+        managed_icp_odometry,
         rtabmap_slam,
+        managed_rtabmap_slam,
         lidar_standby_manager,
         nav2,
         rosbridge_server_launch
