@@ -1,5 +1,7 @@
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
+#include <rcl_interfaces/msg/logger_level.hpp>
+#include <rcl_interfaces/srv/set_logger_levels.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <std_srvs/srv/empty.hpp>
@@ -7,6 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <future>
@@ -35,6 +38,15 @@ public:
     pause_odom_service_ = declare_parameter<std::string>("pause_odom_service", "/pause_odom");
     resume_odom_service_ = declare_parameter<std::string>("resume_odom_service", "/resume_odom");
     scan_topic_ = declare_parameter<std::string>("scan_topic", "/scan");
+    manage_consumer_log_levels_ = declare_parameter<bool>("manage_consumer_log_levels", true);
+    idle_consumer_log_level_ = declare_parameter<std::string>("idle_consumer_log_level", "error");
+    active_consumer_log_level_ = declare_parameter<std::string>("active_consumer_log_level", "info");
+    rtabmap_logger_service_ =
+      declare_parameter<std::string>("rtabmap_logger_service", "/rtabmap/set_logger_levels");
+    icp_odom_logger_service_ =
+      declare_parameter<std::string>("icp_odom_logger_service", "/icp_odometry/set_logger_levels");
+    rtabmap_logger_name_ = declare_parameter<std::string>("rtabmap_logger_name", "rtabmap");
+    icp_odom_logger_name_ = declare_parameter<std::string>("icp_odom_logger_name", "icp_odometry");
 
     start_motor_client_ = create_client<std_srvs::srv::Empty>(start_motor_service_);
     stop_motor_client_ = create_client<std_srvs::srv::Empty>(stop_motor_service_);
@@ -42,6 +54,10 @@ public:
     resume_rtabmap_client_ = create_client<std_srvs::srv::Empty>(resume_rtabmap_service_);
     pause_odom_client_ = create_client<std_srvs::srv::Empty>(pause_odom_service_);
     resume_odom_client_ = create_client<std_srvs::srv::Empty>(resume_odom_service_);
+    rtabmap_logger_client_ =
+      create_client<rcl_interfaces::srv::SetLoggerLevels>(rtabmap_logger_service_);
+    icp_odom_logger_client_ =
+      create_client<rcl_interfaces::srv::SetLoggerLevels>(icp_odom_logger_service_);
 
     const auto status_qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local();
     navigate_to_pose_status_sub_ = create_subscription<action_msgs::msg::GoalStatusArray>(
@@ -107,6 +123,7 @@ private:
   };
 
   using EmptyClient = rclcpp::Client<std_srvs::srv::Empty>;
+  using LoggerLevelsClient = rclcpp::Client<rcl_interfaces::srv::SetLoggerLevels>;
 
   void handle_status(
     const action_msgs::msg::GoalStatusArray::ConstSharedPtr & msg,
@@ -228,6 +245,8 @@ private:
       return;
     }
 
+    set_consumer_log_levels(active_consumer_log_level_, generation, DesiredState::Active);
+
     if (!call_empty_service(resume_odom_client_, resume_odom_service_, generation, DesiredState::Active)) {
       return;
     }
@@ -247,6 +266,7 @@ private:
     if (!call_empty_service(pause_odom_client_, pause_odom_service_, generation, DesiredState::Idle)) {
       return;
     }
+    set_consumer_log_levels(idle_consumer_log_level_, generation, DesiredState::Idle);
     call_empty_service(stop_motor_client_, stop_motor_service_, generation, DesiredState::Idle);
   }
 
@@ -288,6 +308,105 @@ private:
     return false;
   }
 
+  void set_consumer_log_levels(
+    const std::string & level_name,
+    std::uint64_t generation,
+    DesiredState desired_state)
+  {
+    if (!manage_consumer_log_levels_) {
+      return;
+    }
+
+    std::uint32_t level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_INFO;
+    if (!parse_log_level(level_name, level)) {
+      RCLCPP_ERROR(get_logger(), "Invalid consumer logger level '%s'", level_name.c_str());
+      return;
+    }
+
+    call_logger_level_service(
+      rtabmap_logger_client_, rtabmap_logger_service_, rtabmap_logger_name_, level, generation,
+      desired_state);
+    call_logger_level_service(
+      icp_odom_logger_client_, icp_odom_logger_service_, icp_odom_logger_name_, level, generation,
+      desired_state);
+  }
+
+  static bool parse_log_level(const std::string & level_name, std::uint32_t & level)
+  {
+    std::string normalized = level_name;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+
+    if (normalized == "debug") {
+      level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_DEBUG;
+    } else if (normalized == "info") {
+      level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_INFO;
+    } else if (normalized == "warn" || normalized == "warning") {
+      level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_WARN;
+    } else if (normalized == "error") {
+      level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_ERROR;
+    } else if (normalized == "fatal") {
+      level = rcl_interfaces::msg::LoggerLevel::LOG_LEVEL_FATAL;
+    } else {
+      return false;
+    }
+
+    return true;
+  }
+
+  void call_logger_level_service(
+    const LoggerLevelsClient::SharedPtr & client,
+    const std::string & service_name,
+    const std::string & logger_name,
+    std::uint32_t level,
+    std::uint64_t generation,
+    DesiredState desired_state)
+  {
+    if (!should_continue(generation, desired_state)) {
+      return;
+    }
+
+    if (!client->wait_for_service(500ms)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 10000,
+        "Logger service %s is not available; standby will continue without log-level adjustment",
+        service_name.c_str());
+      return;
+    }
+
+    auto request = std::make_shared<rcl_interfaces::srv::SetLoggerLevels::Request>();
+    rcl_interfaces::msg::LoggerLevel logger_level;
+    logger_level.name = logger_name;
+    logger_level.level = level;
+    request->levels.push_back(logger_level);
+
+    auto future = client->async_send_request(request);
+    const auto deadline = std::chrono::steady_clock::now() + 1s;
+    while (
+      rclcpp::ok() && should_continue(generation, desired_state) &&
+      std::chrono::steady_clock::now() < deadline)
+    {
+      if (future.wait_for(100ms) != std::future_status::ready) {
+        continue;
+      }
+
+      const auto response = future.get();
+      if (!response->results.empty() && !response->results.front().successful) {
+        RCLCPP_WARN(
+          get_logger(), "Failed to set logger %s through %s: %s",
+          logger_name.c_str(), service_name.c_str(), response->results.front().reason.c_str());
+      }
+      RCLCPP_INFO(get_logger(), "Set logger %s through %s", logger_name.c_str(), service_name.c_str());
+      return;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 10000,
+      "Timed out setting logger %s through %s; standby will continue",
+      logger_name.c_str(), service_name.c_str());
+  }
+
   std::uint64_t observed_scan_count()
   {
     std::lock_guard<std::mutex> lock(scan_mutex_);
@@ -327,6 +446,13 @@ private:
   std::string pause_odom_service_;
   std::string resume_odom_service_;
   std::string scan_topic_;
+  bool manage_consumer_log_levels_{true};
+  std::string idle_consumer_log_level_;
+  std::string active_consumer_log_level_;
+  std::string rtabmap_logger_service_;
+  std::string icp_odom_logger_service_;
+  std::string rtabmap_logger_name_;
+  std::string icp_odom_logger_name_;
 
   EmptyClient::SharedPtr start_motor_client_;
   EmptyClient::SharedPtr stop_motor_client_;
@@ -334,6 +460,8 @@ private:
   EmptyClient::SharedPtr resume_rtabmap_client_;
   EmptyClient::SharedPtr pause_odom_client_;
   EmptyClient::SharedPtr resume_odom_client_;
+  LoggerLevelsClient::SharedPtr rtabmap_logger_client_;
+  LoggerLevelsClient::SharedPtr icp_odom_logger_client_;
 
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr navigate_to_pose_status_sub_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr navigate_through_poses_status_sub_;

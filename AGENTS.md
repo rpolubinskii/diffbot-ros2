@@ -23,19 +23,7 @@ DiffBot-like robot. The target robot stack is ROS 2 Humble and includes:
 - `ros2_ws/description/`: URDF/Xacro robot description.
 - `embedded/`: Arduino firmware, udev rules, and hardware deployment helpers.
 - `scripts/`: local serial utilities and teleop helpers.
-- `robot_specifications/`: living robot memory and operating context for agents.
 - `cad/`: binary FreeCAD design files. Do not edit these unless explicitly asked.
-
-## Robot Memory
-
-Before using ROS MCP, connecting through rosbridge, or issuing any robot command,
-read `robot_specifications/diffbot.txt`. Treat it as the current project-local
-robot memory for identity, connection details, control surfaces, movement policy,
-sensor behavior, localization lessons, and tested movement recipes.
-
-Keep this memory file updated whenever new movement behaviors, constraints,
-reliable procedures, limits, or failure modes are learned. It is a plain text
-agent memory file and is not currently a ros-mcp verified robot specification.
 
 ## Build
 

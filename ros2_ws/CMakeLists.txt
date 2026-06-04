@@ -13,6 +13,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   action_msgs
   hardware_interface
   pluginlib
+  rcl_interfaces
   rclcpp
   rclcpp_lifecycle
   sensor_msgs

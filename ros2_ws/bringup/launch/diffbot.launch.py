@@ -348,6 +348,13 @@ def generate_launch_description():
             'pause_odom_service': '/pause_odom',
             'resume_odom_service': '/resume_odom',
             'scan_topic': '/scan',
+            'manage_consumer_log_levels': True,
+            'idle_consumer_log_level': 'error',
+            'active_consumer_log_level': 'info',
+            'rtabmap_logger_service': '/rtabmap/set_logger_levels',
+            'icp_odom_logger_service': '/icp_odometry/set_logger_levels',
+            'rtabmap_logger_name': 'rtabmap',
+            'icp_odom_logger_name': 'icp_odometry',
         }],
     )
 
