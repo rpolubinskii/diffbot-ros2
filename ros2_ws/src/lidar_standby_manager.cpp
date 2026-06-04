@@ -154,6 +154,12 @@ private:
       if (standby_timer_) {
         standby_timer_->cancel();
       }
+      if (became_active) {
+        scan_heartbeat_active_ = false;
+        if (scan_heartbeat_timer_) {
+          scan_heartbeat_timer_->cancel();
+        }
+      }
     }
 
     if (became_active) {
@@ -373,7 +379,20 @@ private:
     }
 
     heartbeat.header.stamp = now();
-    scan_heartbeat_pub_->publish(heartbeat);
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (
+        shutting_down_ || generation != state_generation_ || navigation_active_ ||
+        !scan_heartbeat_active_)
+      {
+        if (scan_heartbeat_timer_) {
+          scan_heartbeat_timer_->cancel();
+        }
+        scan_heartbeat_active_ = false;
+        return;
+      }
+      scan_heartbeat_pub_->publish(heartbeat);
+    }
   }
 
   std::uint64_t observed_scan_count()
