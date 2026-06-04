@@ -13,6 +13,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace diffbot
@@ -39,6 +40,26 @@ public:
     managed_scan_topic_ = declare_parameter<std::string>("managed_scan_topic", "/diffbot/standby_scan");
     publish_standby_scan_heartbeat_ = declare_parameter<bool>("publish_standby_scan_heartbeat", true);
     standby_scan_heartbeat_hz_ = declare_parameter<double>("standby_scan_heartbeat_hz", 1.0);
+    nav_action_status_topics_ = declare_parameter<std::vector<std::string>>(
+      "nav_action_status_topics",
+      {
+        "/navigate_to_pose/_action/status",
+        "/navigate_through_poses/_action/status",
+        "/spin/_action/status"
+      });
+    nav_action_status_topics_.erase(
+      std::remove_if(
+        nav_action_status_topics_.begin(), nav_action_status_topics_.end(),
+        [](const auto & topic) {
+          return topic.empty();
+        }),
+      nav_action_status_topics_.end());
+    if (nav_action_status_topics_.empty()) {
+      RCLCPP_WARN(
+        get_logger(),
+        "nav_action_status_topics is empty; falling back to /navigate_to_pose/_action/status");
+      nav_action_status_topics_.push_back("/navigate_to_pose/_action/status");
+    }
 
     start_motor_client_ = create_client<std_srvs::srv::Empty>(start_motor_service_);
     stop_motor_client_ = create_client<std_srvs::srv::Empty>(stop_motor_service_);
@@ -48,16 +69,14 @@ public:
     resume_odom_client_ = create_client<std_srvs::srv::Empty>(resume_odom_service_);
 
     const auto status_qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local();
-    navigate_to_pose_status_sub_ = create_subscription<action_msgs::msg::GoalStatusArray>(
-      "/navigate_to_pose/_action/status", status_qos,
-      [this](action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) {
-        handle_status(msg, ActionStatusSource::NavigateToPose);
-      });
-    navigate_through_poses_status_sub_ = create_subscription<action_msgs::msg::GoalStatusArray>(
-      "/navigate_through_poses/_action/status", status_qos,
-      [this](action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) {
-        handle_status(msg, ActionStatusSource::NavigateThroughPoses);
-      });
+    for (const auto & status_topic : nav_action_status_topics_) {
+      nav_action_status_active_[status_topic] = false;
+      nav_action_status_subs_.push_back(create_subscription<action_msgs::msg::GoalStatusArray>(
+        status_topic, status_qos,
+        [this, status_topic](action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) {
+          handle_status(msg, status_topic);
+        }));
+    }
 
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       scan_topic_, rclcpp::SensorDataQoS(),
@@ -84,6 +103,9 @@ public:
       "Lidar standby manager started: initial_idle_timeout_sec=%.3f, idle_timeout_sec=%.3f, scan_timeout_sec=%.3f, scan_topic=%s, managed_scan_topic=%s",
       initial_idle_timeout_sec_, idle_timeout_sec_, scan_timeout_sec_, scan_topic_.c_str(),
       managed_scan_topic_.c_str());
+    RCLCPP_INFO(
+      get_logger(), "Watching Nav2 action status topics: %s",
+      join_strings(nav_action_status_topics_).c_str());
   }
 
   ~LidarStandbyManager() override
@@ -110,12 +132,6 @@ public:
   }
 
 private:
-  enum class ActionStatusSource
-  {
-    NavigateToPose,
-    NavigateThroughPoses
-  };
-
   enum class DesiredState
   {
     Active,
@@ -126,7 +142,7 @@ private:
 
   void handle_status(
     const action_msgs::msg::GoalStatusArray::ConstSharedPtr & msg,
-    ActionStatusSource source)
+    const std::string & status_topic)
   {
     const bool source_active = has_active_goal(*msg);
 
@@ -135,13 +151,13 @@ private:
 
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      if (source == ActionStatusSource::NavigateToPose) {
-        navigate_to_pose_active_ = source_active;
-      } else {
-        navigate_through_poses_active_ = source_active;
-      }
+      nav_action_status_active_[status_topic] = source_active;
 
-      const bool new_navigation_active = navigate_to_pose_active_ || navigate_through_poses_active_;
+      const bool new_navigation_active = std::any_of(
+        nav_action_status_active_.begin(), nav_action_status_active_.end(),
+        [](const auto & entry) {
+          return entry.second;
+        });
       if (new_navigation_active == navigation_active_) {
         return;
       }
@@ -186,6 +202,18 @@ private:
       }
     }
     return false;
+  }
+
+  static std::string join_strings(const std::vector<std::string> & values)
+  {
+    std::string joined;
+    for (const auto & value : values) {
+      if (!joined.empty()) {
+        joined += ", ";
+      }
+      joined += value;
+    }
+    return joined;
   }
 
   void schedule_standby_timer(bool initial_delay)
@@ -436,6 +464,7 @@ private:
   std::string resume_odom_service_;
   std::string scan_topic_;
   std::string managed_scan_topic_;
+  std::vector<std::string> nav_action_status_topics_;
   bool publish_standby_scan_heartbeat_{true};
   double standby_scan_heartbeat_hz_{1.0};
 
@@ -446,16 +475,15 @@ private:
   EmptyClient::SharedPtr pause_odom_client_;
   EmptyClient::SharedPtr resume_odom_client_;
 
-  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr navigate_to_pose_status_sub_;
-  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr navigate_through_poses_status_sub_;
+  std::vector<rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr>
+    nav_action_status_subs_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_heartbeat_pub_;
   rclcpp::TimerBase::SharedPtr standby_timer_;
   rclcpp::TimerBase::SharedPtr scan_heartbeat_timer_;
 
   std::mutex state_mutex_;
-  bool navigate_to_pose_active_{false};
-  bool navigate_through_poses_active_{false};
+  std::unordered_map<std::string, bool> nav_action_status_active_;
   bool navigation_active_{false};
   bool shutting_down_{false};
   bool scan_heartbeat_active_{false};

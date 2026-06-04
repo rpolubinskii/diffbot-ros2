@@ -385,6 +385,11 @@ def generate_launch_description():
             'resume_odom_service': '/resume_odom',
             'scan_topic': '/scan',
             'managed_scan_topic': standby_scan_topic,
+            'nav_action_status_topics': [
+                '/navigate_to_pose/_action/status',
+                '/navigate_through_poses/_action/status',
+                '/spin/_action/status',
+            ],
             'publish_standby_scan_heartbeat': True,
             'standby_scan_heartbeat_hz': 1.0,
         }],
