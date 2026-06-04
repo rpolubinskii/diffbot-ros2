@@ -10,12 +10,14 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 # find dependencies
 set(THIS_PACKAGE_INCLUDE_DEPENDS
+  action_msgs
   hardware_interface
   pluginlib
   rclcpp
   rclcpp_lifecycle
   sensor_msgs
   std_msgs
+  std_srvs
 )
 
 find_package(ament_cmake REQUIRED)
@@ -36,6 +38,15 @@ $<INSTALL_INTERFACE:include/diffbot>
 )
 ament_target_dependencies(
   diffbot PUBLIC
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
+add_executable(diffbot_lidar_standby_manager
+  src/lidar_standby_manager.cpp
+)
+target_compile_features(diffbot_lidar_standby_manager PUBLIC cxx_std_17)
+ament_target_dependencies(
+  diffbot_lidar_standby_manager PUBLIC
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
@@ -60,6 +71,9 @@ install(TARGETS diffbot
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+install(TARGETS diffbot_lidar_standby_manager
+  DESTINATION lib/diffbot
 )
 
 ## EXPORTS

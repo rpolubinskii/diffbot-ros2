@@ -39,8 +39,16 @@ def generate_launch_description():
             description="Start robot with mock hardware mirroring command to its states.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "manage_lidar_standby",
+            default_value="true",
+            description="Pause RTAB-Map/ICP and stop the RPLidar motor when Nav2 has no active goals.",
+        )
+    )
 
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
+    manage_lidar_standby = LaunchConfiguration("manage_lidar_standby")
 
     rplidar_pkg = get_package_share_directory('rplidar_ros')
 
@@ -324,6 +332,25 @@ def generate_launch_description():
         remappings=rtabmap_remappings,
         arguments=['-d'])
 
+    lidar_standby_manager = Node(
+        package='diffbot',
+        executable='diffbot_lidar_standby_manager',
+        name='diffbot_lidar_standby_manager',
+        output='screen',
+        condition=IfCondition(manage_lidar_standby),
+        parameters=[{
+            'idle_timeout_sec': 10.0,
+            'scan_timeout_sec': 3.0,
+            'start_motor_service': '/start_motor',
+            'stop_motor_service': '/stop_motor',
+            'pause_rtabmap_service': '/rtabmap/pause',
+            'resume_rtabmap_service': '/rtabmap/resume',
+            'pause_odom_service': '/pause_odom',
+            'resume_odom_service': '/resume_odom',
+            'scan_topic': '/scan',
+        }],
+    )
+
     rosbridge_server_pkg = get_package_share_directory('rosbridge_server')
     rosbridge_server_launch = IncludeLaunchDescription(
         XMLLaunchDescriptionSource(
@@ -347,6 +374,7 @@ def generate_launch_description():
         # rgbd_odometry,
         icp_odometry,
         rtabmap_slam,
+        lidar_standby_manager,
         nav2,
         rosbridge_server_launch
     ]
