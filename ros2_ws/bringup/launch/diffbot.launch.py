@@ -375,6 +375,7 @@ def generate_launch_description():
         condition=IfCondition(manage_lidar_standby),
         parameters=[{
             'idle_timeout_sec': 10.0,
+            'initial_idle_timeout_sec': 25.0,
             'scan_timeout_sec': 3.0,
             'start_motor_service': '/start_motor',
             'stop_motor_service': '/stop_motor',

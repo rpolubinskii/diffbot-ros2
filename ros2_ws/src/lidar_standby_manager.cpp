@@ -27,6 +27,7 @@ public:
   : Node("diffbot_lidar_standby_manager")
   {
     idle_timeout_sec_ = declare_parameter<double>("idle_timeout_sec", 10.0);
+    initial_idle_timeout_sec_ = declare_parameter<double>("initial_idle_timeout_sec", 25.0);
     scan_timeout_sec_ = declare_parameter<double>("scan_timeout_sec", 3.0);
     start_motor_service_ = declare_parameter<std::string>("start_motor_service", "/start_motor");
     stop_motor_service_ = declare_parameter<std::string>("stop_motor_service", "/stop_motor");
@@ -76,12 +77,13 @@ public:
     scan_heartbeat_pub_ = create_publisher<sensor_msgs::msg::LaserScan>(
       managed_scan_topic_, rclcpp::QoS(rclcpp::KeepLast(10)).reliable());
 
-    schedule_standby_timer();
+    schedule_standby_timer(true);
 
     RCLCPP_INFO(
       get_logger(),
-      "Lidar standby manager started: idle_timeout_sec=%.3f, scan_timeout_sec=%.3f, scan_topic=%s, managed_scan_topic=%s",
-      idle_timeout_sec_, scan_timeout_sec_, scan_topic_.c_str(), managed_scan_topic_.c_str());
+      "Lidar standby manager started: initial_idle_timeout_sec=%.3f, idle_timeout_sec=%.3f, scan_timeout_sec=%.3f, scan_topic=%s, managed_scan_topic=%s",
+      initial_idle_timeout_sec_, idle_timeout_sec_, scan_timeout_sec_, scan_topic_.c_str(),
+      managed_scan_topic_.c_str());
   }
 
   ~LidarStandbyManager() override
@@ -162,7 +164,7 @@ private:
       RCLCPP_INFO(
         get_logger(), "No active Nav2 goals; scheduling lidar standby in %.3f seconds",
         idle_timeout_sec_);
-      schedule_standby_timer();
+      schedule_standby_timer(false);
     }
   }
 
@@ -180,10 +182,11 @@ private:
     return false;
   }
 
-  void schedule_standby_timer()
+  void schedule_standby_timer(bool initial_delay)
   {
     const auto generation = current_generation();
-    const auto delay = std::chrono::duration<double>(std::max(0.0, idle_timeout_sec_));
+    const auto timeout_sec = initial_delay ? initial_idle_timeout_sec_ : idle_timeout_sec_;
+    const auto delay = std::chrono::duration<double>(std::max(0.0, timeout_sec));
     standby_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(delay),
       [this, generation]() {
@@ -404,6 +407,7 @@ private:
   }
 
   double idle_timeout_sec_{10.0};
+  double initial_idle_timeout_sec_{25.0};
   double scan_timeout_sec_{3.0};
   std::string start_motor_service_;
   std::string stop_motor_service_;
