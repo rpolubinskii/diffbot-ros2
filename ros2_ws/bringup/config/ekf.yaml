@@ -38,10 +38,12 @@ ekf_filter_node:
 #    odom1_queue_size: 10
 
     odom2: /rtabmap/icp_odom
-    # ICP matches the real-world path (validated in rviz + agrees with the
-    # RealSense gyro to 1-2 deg). Keep it as the absolute, drift-free pose/yaw
-    # correction; the RealSense gyro (imu0) supplies smooth high-rate yaw between
-    # ICP updates. Fuses absolute yaw + vx + vyaw.
+    # ICP scan-matching is good odometry and IS fused (absolute yaw + vx + vyaw).
+    # NOTE: it previously carried a ~120 deg constant offset because icp_odometry
+    # initialized its heading from the magnetometer-referenced external IMU, and
+    # the indoor field is badly disturbed (|B|~95 uT, ~2x earth, position-
+    # dependent). Fixed by disabling mag fusion in external_imu_filter.yaml so the
+    # external IMU (and thus ICP) initialize in the robot frame, not magnetic north.
     odom2_config: [false, false, false,
                    false, false, true,
                    true, false, false,
@@ -52,12 +54,14 @@ ekf_filter_node:
     odom2_queue_size: 10
 
     imu0: /imu/data_body
-    # RealSense gyro is the best heading source on this robot: tracks the real
-    # path (ICP) to 1-2 deg RMS, vs 16-37 deg for the wheels. Fuse its yaw RATE
-    # only -- NOT absolute yaw (no usable magnetometer; gyro yaw is unbounded).
-    # ICP (odom2) supplies the absolute, drift-free yaw correction and pins the
-    # gyro's small ~7 deg/min bias at standstill. camera_imu_frame is identity-
-    # rotated to base_footprint, so angular_velocity.z is true body yaw rate.
+    # RealSense gyro is the heading source: dead-reckoning wheel-vx + gyro-yaw
+    # reproduced the SLAM-truth endpoint to ~0.08 m, vs 1.48 m for raw wheel.
+    # Fuse its yaw RATE only -- NOT absolute yaw (no usable magnetometer; gyro
+    # yaw is unbounded; rtabmap map->odom supplies absolute correction).
+    # camera_imu_frame is identity-rotated to base_footprint, so
+    # angular_velocity.z is true body yaw rate.
+    # NOTE: residual gyro bias ~0.0019-0.0027 rad/s (~9 deg/min) is NOT removed
+    # upstream -- recalibrate the RealSense gyro to minimize odom-frame yaw drift.
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,
