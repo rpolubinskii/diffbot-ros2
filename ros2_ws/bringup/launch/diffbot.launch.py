@@ -42,7 +42,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "manage_lidar_standby",
-            default_value="true",
+            default_value="false",
             description="Pause RTAB-Map/ICP and stop the RPLidar motor when Nav2 has no active goals.",
         )
     )
