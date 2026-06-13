@@ -14,10 +14,14 @@ ekf_filter_node:
     predict_to_current_time: true
 
     odom0: /diffbot_base_controller/odom
+    # Wheel odom translation (vx) is good (~10% scale error), but its HEADING is
+    # the dominant Layer-A error: yaw drifts 16-37 deg RMS vs the real path (ICP)
+    # within a single run -> stop fusing wheel vyaw. Keep vx (forward speed) and
+    # vy (structurally ~0 for a diff drive, constrains lateral slip).
     odom0_config: [false, false, false,
                    false, false, false,
                    true, true, false,
-                   false, false, true,
+                   false, false, false,
                    false, false, false]
     odom0_differential: false
     odom0_relative: false
@@ -33,27 +37,27 @@ ekf_filter_node:
 #    odom1_relative: false
 #    odom1_queue_size: 10
 
-    # ICP odometry disabled for the RealSense-gyro yaw experiment. Bag analysis
-    # (2026-06-13) showed icp_odom was the WORST yaw source: 112-126 deg / 0.7-1.6 m
-    # return-to-origin error in a corridor/symmetric apartment (scan-match
-    # degeneracy). Re-enable only after the gyro-driven yaw baseline is validated.
-    # odom2: /rtabmap/icp_odom
-    # odom2_config: [false, false, false,
-    #                false, false, true,
-    #                true, false, false,
-    #                false, false, true,
-    #                false, false, false]
-    # odom2_differential: false
-    # odom2_relative: false
-    # odom2_queue_size: 10
+    odom2: /rtabmap/icp_odom
+    # ICP matches the real-world path (validated in rviz + agrees with the
+    # RealSense gyro to 1-2 deg). Keep it as the absolute, drift-free pose/yaw
+    # correction; the RealSense gyro (imu0) supplies smooth high-rate yaw between
+    # ICP updates. Fuses absolute yaw + vx + vyaw.
+    odom2_config: [false, false, false,
+                   false, false, true,
+                   true, false, false,
+                   false, false, true,
+                   false, false, false]
+    odom2_differential: false
+    odom2_relative: false
+    odom2_queue_size: 10
 
     imu0: /imu/data_body
-    # RealSense gyro is the cleanest yaw source on this robot: low noise
-    # (~0.0023 rad/s std) and bias-corrected integration returns to true heading
-    # within ~4 deg over an 80 s multi-turn loop, vs 26-49 deg for wheel yaw.
-    # Fuse its yaw RATE only -- NOT absolute yaw (unbounded without a usable
-    # magnetometer). The residual ~0.002 rad/s (~7 deg/min) stationary bias is
-    # cancelled by wheel vyaw, which reports exactly 0 when the robot is stopped.
+    # RealSense gyro is the best heading source on this robot: tracks the real
+    # path (ICP) to 1-2 deg RMS, vs 16-37 deg for the wheels. Fuse its yaw RATE
+    # only -- NOT absolute yaw (no usable magnetometer; gyro yaw is unbounded).
+    # ICP (odom2) supplies the absolute, drift-free yaw correction and pins the
+    # gyro's small ~7 deg/min bias at standstill. camera_imu_frame is identity-
+    # rotated to base_footprint, so angular_velocity.z is true body yaw rate.
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,
