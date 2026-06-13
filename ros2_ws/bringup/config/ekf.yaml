@@ -33,25 +33,31 @@ ekf_filter_node:
 #    odom1_relative: false
 #    odom1_queue_size: 10
 
-    odom2: /rtabmap/icp_odom
-    # ICP yaw is much more stable than either IMU while stationary. Fuse its
-    # heading into EKF instead of integrating biased IMU yaw rates.
-    odom2_config: [false, false, false,
-                   false, false, true,
-                   true, false, false,
-                   false, false, true,
-                   false, false, false]
-    odom2_differential: false
-    odom2_relative: false
-    odom2_queue_size: 10
+    # ICP odometry disabled for the RealSense-gyro yaw experiment. Bag analysis
+    # (2026-06-13) showed icp_odom was the WORST yaw source: 112-126 deg / 0.7-1.6 m
+    # return-to-origin error in a corridor/symmetric apartment (scan-match
+    # degeneracy). Re-enable only after the gyro-driven yaw baseline is validated.
+    # odom2: /rtabmap/icp_odom
+    # odom2_config: [false, false, false,
+    #                false, false, true,
+    #                true, false, false,
+    #                false, false, true,
+    #                false, false, false]
+    # odom2_differential: false
+    # odom2_relative: false
+    # odom2_queue_size: 10
 
     imu0: /imu/data_body
-    # RealSense has no magnetometer, and its gyro bias drives yaw drift while
-    # stationary. Do not fuse its yaw orientation or yaw rate into /odom.
+    # RealSense gyro is the cleanest yaw source on this robot: low noise
+    # (~0.0023 rad/s std) and bias-corrected integration returns to true heading
+    # within ~4 deg over an 80 s multi-turn loop, vs 26-49 deg for wheel yaw.
+    # Fuse its yaw RATE only -- NOT absolute yaw (unbounded without a usable
+    # magnetometer). The residual ~0.002 rad/s (~7 deg/min) stationary bias is
+    # cancelled by wheel vyaw, which reports exactly 0 when the robot is stopped.
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,
-                  false, false, false,
+                  false, false, true,
                   false, false, false]
     imu0_differential: false
     imu0_relative: false
