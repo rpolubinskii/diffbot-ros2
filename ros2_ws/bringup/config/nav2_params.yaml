@@ -372,17 +372,38 @@ collision_monitor:
     base_frame_id: "base_footprint"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
-    cmd_vel_out_topic: "diffbot_base_controller/cmd_vel_unstamped"
+    cmd_vel_out_topic: "diffbot/collision_monitor/cmd_vel_unstamped"
     enable_stamped_cmd_vel: false
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.5
-    source_timeout: 5.0
+    source_timeout: 0.3
     base_shift_correction: True
     stop_pub_timeout: 2.0
     use_realtime_priority: false
+    polygons: ["stop_zone", "slowdown_zone"]
+    stop_zone:
+      type: "circle"
+      radius: 0.30
+      action_type: "stop"
+      # Humble triggers when points_inside > max_points; newer Nav2 uses min_points.
+      max_points: 2
+      min_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_monitor/stop_zone"
+      enabled: True
+    slowdown_zone:
+      type: "circle"
+      radius: 0.55
+      action_type: "slowdown"
+      max_points: 2
+      min_points: 3
+      slowdown_ratio: 0.5
+      visualize: True
+      polygon_pub_topic: "collision_monitor/slowdown_zone"
+      enabled: True
     observation_sources: ["scan"]
     scan:
-      source_timeout: 0.2
+      source_timeout: 0.3
       type: "scan"
       topic: "/scan"
       enabled: True
