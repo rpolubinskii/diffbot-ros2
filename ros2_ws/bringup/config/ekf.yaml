@@ -39,11 +39,19 @@ ekf_filter_node:
 
     odom2: /rtabmap/icp_odom
     # ICP scan-matching is good odometry and IS fused (absolute yaw + vx + vyaw).
-    # NOTE: it previously carried a ~120 deg constant offset because icp_odometry
-    # initialized its heading from the magnetometer-referenced external IMU, and
-    # the indoor field is badly disturbed (|B|~95 uT, ~2x earth, position-
-    # dependent). Fixed by disabling mag fusion in external_imu_filter.yaml so the
-    # external IMU (and thus ICP) initialize in the robot frame, not magnetic north.
+    # Fusing its ABSOLUTE yaw is only valid because icp_odom now starts at yaw 0
+    # in the base frame -- see the constant-offset root cause below.
+    # ROOT CAUSE of the old constant offset: icp_odometry ran with
+    # wait_imu_to_init=True and seeded its whole output frame from the external
+    # IMU's ABSOLUTE orientation at startup. That orientation's zero is
+    # (magnetic north | gyro-init) + the -90 deg imu_link mount, none of which
+    # is the odom frame -> icp_odom was born rotated by a constant. Measured:
+    # icp's FIRST message == /imu/external/data_body to <0.1 deg, stationary,
+    # from t=0 (mag on: -128.7 deg; mag off: ~-80 deg). It was NOT drift.
+    # Two-part fix: (1) external_imu_filter.yaml use_mag=false removed the
+    # magnetic-north part; (2) diffbot.launch.py icp_odometry wait_imu_to_init=
+    # false drops the absolute-yaw seed entirely so icp starts at base yaw 0.
+    # ICP's scan-matched rotation was always correct -- only the seed was bad.
     odom2_config: [false, false, false,
                    false, false, true,
                    true, false, false,

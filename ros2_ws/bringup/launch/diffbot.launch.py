@@ -229,7 +229,18 @@ def generate_launch_description():
         'publish_tf': False,
         'topic_queue_size': 30,
         'sync_queue_size': 30,
-        'wait_imu_to_init': True,
+        # wait_imu_to_init must stay False: with True, icp_odometry seeds its
+        # ENTIRE output frame from the external IMU's ABSOLUTE orientation at
+        # startup. That orientation has no valid zero in the odom frame -- its
+        # heading reference is (gyro-init OR magnetic north) + the -90 deg
+        # imu_link mount -- so icp_odom is born rotated by a constant offset vs
+        # the wheel/EKF frame (measured: -128.7 deg with mag on, ~-80 deg mag
+        # off; icp's first message == /imu/external/data_body to <0.1 deg).
+        # icp scan-matching rotation is itself good and drift-free, so we only
+        # need to drop the bad absolute-yaw seed: start at identity (base frame
+        # yaw 0, aligned with wheel/EKF). The IMU stays subscribed for gravity,
+        # deskew, and the inter-scan rotation guess during fast spins.
+        'wait_imu_to_init': False,
         'always_check_imu_tf': True,
         'Reg/Force3DoF': 'true'
     }]
