@@ -9,7 +9,7 @@ external_imu_filter:
     # heading from it) a ~120 deg offset vs the robot/odom frame. Gyro-only means
     # the filter initializes yaw at 0 in the robot frame. Re-enable only if a
     # reliable, calibrated heading reference becomes available.
-    use_mag: false
+    use_mag: true
     publish_tf: false
     reverse_tf: false
     fixed_frame: odom
