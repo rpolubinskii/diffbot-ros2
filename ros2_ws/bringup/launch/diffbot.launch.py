@@ -242,7 +242,19 @@ def generate_launch_description():
         # deskew, and the inter-scan rotation guess during fast spins.
         'wait_imu_to_init': False,
         'always_check_imu_tf': True,
-        'Reg/Force3DoF': 'true'
+        'Reg/Force3DoF': 'true',
+        # Auto-recover from lost tracking. With the default ResetCountdown=0,
+        # ONE failed registration (e.g. a scan dropped while icp_odometry starves
+        # for CPU during a RTAB-Map loop-closure graph optimization -- log shows
+        # delay growing to ~0.14s) resets the motion-model velocity to null, and
+        # every subsequent frame then fails with "RegistrationIcp cannot do
+        # registration with a null guess" FOREVER -- icp stays lost even once the
+        # robot is stationary and the scan trivially matches. ResetCountdown=1
+        # re-initializes the local map at the last good pose after a lost frame,
+        # breaking the spiral. It resets to the latest pose (not identity), and
+        # while lost icp publishes covariance 9999 so the EKF ignores it -- so
+        # recovery does not inject a jump into the fused /odom heading.
+        'Odom/ResetCountdown': '1'
     }]
 
     icp_odometry_remappings = [
