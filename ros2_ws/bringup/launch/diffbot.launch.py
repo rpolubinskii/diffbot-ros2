@@ -286,8 +286,8 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            'rgb_camera.color_profile': '640x360x30',
-            'depth_module.depth_profile': '640x360x30',
+            'rgb_camera.color_profile': '320x180x60',
+            'depth_module.depth_profile': '320x180x60',
         }.items(),
     )
 
