@@ -17,9 +17,22 @@ diffbot_base_controller:
     wheels_per_side: 1  # actually 2, but both are controlled by 1 signal
     wheel_radius: 0.036
 
-    wheel_separation_multiplier: 1.2519
-    left_wheel_radius_multiplier: 1.0907
-    right_wheel_radius_multiplier: 1.0907
+    # Wheel calibration 2026-06-14 (bags diffbot_icpfix_*_straight and *_rotation_{cw,ccw}):
+    #   radius: 3 m straight drive, encoders Δφ L=79.19 / R=76.97 rad vs measured ground
+    #     L=3.00 / R=2.965 m  ->  true radius ~0.0382 m (was 0.0393, ~2.8% high). Odom
+    #     had over-reported distance (computed 3.11/3.03 m). Kept SYMMETRIC: the ~1.7%
+    #     L/R radius split is within hand-measurement noise (3.5 cm diff over 3 m).
+    #   separation: 2x360 deg in-place spins, physical 735/737 deg while wheel odom read
+    #     ~720 (under by ~2.3%); with the calibrated radius -> ~0.238 m (was 0.250).
+    # NOTE: the LEFT wheel spins ~2.9% more than the right for a straight command (motor/
+    #   control asymmetry; ~19% in spin -> direction-dependent), so the robot veers and
+    #   wheel-only heading is unreliable (read -20 deg on a straight run vs ~-4 deg true).
+    #   This is why ekf.yaml does NOT fuse wheel vyaw -- a single radius multiplier cannot
+    #   correct a direction-dependent asymmetry, so it is documented, not "calibrated out".
+    #   radius mainly matters here because the EKF DOES fuse wheel vx (forward speed).
+    wheel_separation_multiplier: 1.190    # eff 0.238 m (0.2 x 1.190)
+    left_wheel_radius_multiplier: 1.0611  # eff 0.0382 m (0.036 x 1.0611)
+    right_wheel_radius_multiplier: 1.0611 # eff 0.0382 m
 
     publish_rate: 50.0
     # was base_link
