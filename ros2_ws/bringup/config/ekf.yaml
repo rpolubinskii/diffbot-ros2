@@ -27,17 +27,14 @@ ekf_filter_node:
     odom0_relative: false
     odom0_queue_size: 10
 
-#    odom1: /rtabmap/odom
-#    odom1_config: [false, false, false,
-#                   false, false, false,
-#                   true, false, false,
-#                   false, false, true,
-#                   false, false, false]
-#    odom1_differential: false
-#    odom1_relative: false
-#    odom1_queue_size: 10
-
-    odom2: /rtabmap/icp_odom
+    # IMPORTANT: robot_localization reads odom0, odom1, odom2... CONSECUTIVELY and
+    # STOPS at the first missing index. ICP MUST be odom1 (not odom2): previously
+    # odom1 was commented out and ICP sat at odom2, so enumeration stopped after
+    # odom0 and ICP was SILENTLY NOT FUSED. Confirmed live (the odom2 param did not
+    # exist on the node) and in bags (EKF yaw == the raw gyro integral, drifting
+    # ~7 deg/min, while ICP held heading to ~0.1 deg/20 s stationary). Keep sensor
+    # indices gap-free: odom0 (wheel), odom1 (ICP).
+    odom1: /rtabmap/icp_odom
     # ICP scan-matching is good odometry and IS fused (absolute yaw + vx + vyaw).
     # Fusing its ABSOLUTE yaw is only valid because icp_odom now starts at yaw 0
     # in the base frame -- see the constant-offset root cause below.
@@ -52,14 +49,14 @@ ekf_filter_node:
     # magnetic-north part; (2) diffbot.launch.py icp_odometry wait_imu_to_init=
     # false drops the absolute-yaw seed entirely so icp starts at base yaw 0.
     # ICP's scan-matched rotation was always correct -- only the seed was bad.
-    odom2_config: [false, false, false,
+    odom1_config: [false, false, false,
                    false, false, true,
                    true, false, false,
                    false, false, true,
                    false, false, false]
-    odom2_differential: false
-    odom2_relative: false
-    odom2_queue_size: 10
+    odom1_differential: false
+    odom1_relative: false
+    odom1_queue_size: 10
 
     imu0: /imu/data_body
     # RealSense gyro is the heading source: dead-reckoning wheel-vx + gyro-yaw
