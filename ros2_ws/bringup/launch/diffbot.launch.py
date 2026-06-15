@@ -197,7 +197,20 @@ def generate_launch_description():
     }]
 
     rtabmap_remappings = [
-        ('imu', '/imu/external/data_body'),
+        # IMU = RealSense /imu/data_body, NOT the external ICM-20948
+        # /imu/external/data_body. The external IMU is the worse source (gyro std
+        # ~0.029 rad/s + vibration spikes, madgwick absolute yaw drift 30-81 deg,
+        # magnetometer unusable indoors) and is no longer used by any consumer.
+        # The whole SLAM layer (icp_odometry + rtabmap) now takes its gravity
+        # vector and fast-spin rotation guess from the clean ~198 Hz RealSense
+        # gyro -- the same source the EKF already trusts. /imu/data_body is in
+        # camera_imu_frame, which is identity-rotated to base_footprint (static TF
+        # chain base_footprint->base_link->camera_link->camera_gyro_frame->
+        # camera_imu_frame is all rpy 0), and rtabmap/icp resolve the IMU frame
+        # via TF regardless. The external_imu_filter/_transformer nodes still run
+        # (so /imu/external/* stays recordable for future mag calibration) but
+        # nothing consumes their output now.
+        ('imu', '/imu/data_body'),
         ('odom', '/odom'),
         # ('odom_info', '/rtabmap/odom_info'),
         ('rgb/image', '/camera/camera/color/image_raw'),
@@ -216,7 +229,7 @@ def generate_launch_description():
     }]
 
     rgbd_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),  # RealSense IMU (see rtabmap_remappings rationale)
         ('odom', '/rtabmap/odom'),
         ('odom_info', '/rtabmap/odom_info'),
         ('rgb/image', '/camera/camera/color/image_raw'),
@@ -258,13 +271,13 @@ def generate_launch_description():
     }]
 
     icp_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),  # RealSense IMU (see rtabmap_remappings rationale)
         ('odom', '/rtabmap/icp_odom'),
         ('odom_info', '/rtabmap/icp_odom_info'),
         ('scan', '/scan')]
 
     managed_icp_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),  # RealSense IMU (see rtabmap_remappings rationale)
         ('odom', '/rtabmap/icp_odom'),
         ('odom_info', '/rtabmap/icp_odom_info'),
         ('scan', standby_scan_topic)]

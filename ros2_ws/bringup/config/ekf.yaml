@@ -35,38 +35,40 @@ ekf_filter_node:
     # ~7 deg/min, while ICP held heading to ~0.1 deg/20 s stationary). Keep sensor
     # indices gap-free: odom0 (wheel), odom1 (ICP).
     odom1: /rtabmap/icp_odom
-    # ICP is fused as a DIFFERENTIAL source only: vx (idx6) + vyaw (idx11).
-    # Its ABSOLUTE yaw (idx5) is intentionally NOT fused.
+    # ICP is fused with ABSOLUTE yaw (idx5) + vx (idx6) + vyaw (idx11).
     #
-    # Why abs-yaw is OFF (regression found in bag diffbot_cal_20260615_210752):
-    # icp_odometry periodically loses tracking and RESETS (feature-poor lidar
-    # geometry during rotation; icp_structural_complexity ~0.35). On those resets
-    # its absolute yaw is corrupted -- in that bag it swept ~100 deg over 1.7 s
-    # once, and froze at a fixed heading through a real turn another time -- yet
-    # it keeps publishing that wrong yaw with tiny covariance (~1e-5). Because
-    # abs-yaw is an ABSOLUTE constraint, the EKF obeyed it and abandoned the
-    # CORRECT gyro+wheel heading: gyro and wheel INDEPENDENTLY agreed the robot
-    # turned ~-100 deg, but ICP/EKF reported only -75 deg. That ~25 deg heading
-    # error drove the robot into a wall. robot_localization cannot down-weight
-    # ICP yaw selectively (ICP under-reports its covariance), so the only safe
-    # fix is to stop fusing its absolute yaw. The earlier "stationary yaw drift
-    # ~0" result came from this same abs-yaw pin -- it looked good standing still
-    # but is dangerous under motion; it is NOT a true global reference.
+    # Why abs-yaw is ON -- it is REQUIRED for map quality, not optional:
+    # rtabmap_slam builds the map from THIS EKF's /odom, NOT from icp_odom
+    # directly (diffbot.launch.py rtabmap_remappings: ('odom','/odom')). So the
+    # EKF heading IS the odometry the map is built on. For lidar/RGBD scans to
+    # align in the map, that odometry must agree with the heading at which the
+    # scans actually register -- i.e. ICP's heading. Pinning EKF yaw to ICP keeps
+    # EKF == ICP, so scans align and the map is clean. Turning abs-yaw OFF was
+    # TESTED (bag diffbot_cal_20260615_213202): EKF then followed the gyro and
+    # diverged 25-37 deg from ICP mid-run -> scans placed at the wrong heading ->
+    # ghosting / broken geometry. vyaw alone is NOT enough to keep EKF==ICP (gyro
+    # dominates the rate); only the absolute-yaw pin holds them together.
     #
-    # Absolute heading now comes from: gyro yaw RATE (imu0, short term) + rtabmap
-    # map->odom loop closure (long-term absolute correction -- the architecturally
-    # correct global reference, vs icp_odom which is itself drifting/resetting
-    # odometry). Trade-off: residual gyro-bias drift returns when stationary
-    # (partly suppressed by ICP vyaw~=0 when still) -- mitigate by recalibrating
-    # the RealSense gyro, NOT by re-pinning EKF heading to icp_odom.
+    # KNOWN RISK (do NOT "fix" by unpinning the EKF): when icp_odometry corrupts
+    # its own heading on a reset (bag diffbot_cal_20260615_210752: lost tracking
+    # during rotation -> yaw froze/swept -> ~25 deg error vs the gyro+wheel
+    # consensus -> robot drove into a wall), this pin propagates that error into
+    # navigation. Unpinning the EKF only trades the crash for a degraded map (see
+    # above) -- both are band-aids on the SAME wound. The real fix is at the ICP
+    # layer: stop icp_odometry from corrupting heading on resets / fast rotation
+    # in feature-poor space (see icp_odometry_parameters in diffbot.launch.py:
+    # Odom/ResetCountdown, motion guess, registration robustness).
+    # robot_localization cannot down-weight ICP yaw selectively (ICP under-reports
+    # its covariance ~1e-5 even when wrong), so the EKF cannot be the place that
+    # distinguishes good ICP yaw from corrupted ICP yaw.
     #
-    # History (independent of the above): icp_odom's old constant offset was
-    # icp_odometry seeding its frame from the external IMU's absolute orientation
-    # (wait_imu_to_init=true + mag). Fixed in diffbot.launch.py
-    # (wait_imu_to_init=false) + external_imu_filter.yaml (use_mag=false) so icp
-    # starts at base yaw 0. That seed fix stands and is why ICP vx/vyaw are clean.
+    # Seed-offset history: icp_odom's old constant offset was icp_odometry seeding
+    # its frame from the external IMU's absolute orientation (wait_imu_to_init=
+    # true + mag). Fixed in diffbot.launch.py (wait_imu_to_init=false) +
+    # external_imu_filter.yaml (use_mag=false) so icp starts at base yaw 0. That
+    # fix is why fusing ICP absolute yaw is valid (icp_odom shares the base frame).
     odom1_config: [false, false, false,
-                   false, false, false,
+                   false, false, true,
                    true, false, false,
                    false, false, true,
                    false, false, false]
@@ -93,16 +95,12 @@ ekf_filter_node:
     imu0_queue_size: 20
     imu0_remove_gravitational_acceleration: false
 
-    imu1: /imu/external/data_body
-    # The external IMU also shows absolute yaw drift even with magnetometer
-    # enabled, and its residual gyro bias still drifts /odom. Keep it available
-    # for RTAB-Map/diagnostics, but do not fuse it into EKF heading by default.
-    imu1_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false]
-    imu1_differential: false
-    imu1_relative: false
-    imu1_queue_size: 20
-    imu1_remove_gravitational_acceleration: false
+    # External ICM-20948 IMU (/imu/external/data_body) is DELIBERATELY NOT a
+    # sensor here. It is the worse source (gyro std ~0.029 rad/s + vibration
+    # spikes, madgwick absolute yaw drift 30-81 deg, magnetometer unusable
+    # indoors) and is not fused anywhere in the stack as of 2026-06-15 -- the
+    # whole SLAM layer was moved to the RealSense IMU too (see diffbot.launch.py).
+    # Its raw topics (/imu/data_raw, /imu/mag) still publish for future mag
+    # calibration; re-add an imuN sensor here only if it is calibrated and proven
+    # better than the RealSense gyro on some axis. Note robot_localization stops
+    # enumerating imu0,imu1,... at the first gap, so any re-add must be imu1.
