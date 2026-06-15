@@ -256,18 +256,27 @@ def generate_launch_description():
         'wait_imu_to_init': False,
         'always_check_imu_tf': True,
         'Reg/Force3DoF': 'true',
-        # Auto-recover from lost tracking. With the default ResetCountdown=0,
-        # ONE failed registration (e.g. a scan dropped while icp_odometry starves
-        # for CPU during a RTAB-Map loop-closure graph optimization -- log shows
-        # delay growing to ~0.14s) resets the motion-model velocity to null, and
-        # every subsequent frame then fails with "RegistrationIcp cannot do
-        # registration with a null guess" FOREVER -- icp stays lost even once the
-        # robot is stationary and the scan trivially matches. ResetCountdown=1
-        # re-initializes the local map at the last good pose after a lost frame,
-        # breaking the spiral. It resets to the latest pose (not identity), and
-        # while lost icp publishes covariance 9999 so the EKF ignores it -- so
-        # recovery does not inject a jump into the fused /odom heading.
-        'Odom/ResetCountdown': '1'
+        # Auto-recover from lost tracking, but DON'T over-reset.
+        # History: ResetCountdown=0 caused a permanent-loss spiral -- ONE failed
+        # registration (e.g. a scan dropped while icp_odometry starved for CPU
+        # during a loop-closure graph optimization, delay ~0.14s) zeroed the
+        # motion-model velocity, and every later frame then failed with
+        # "RegistrationIcp cannot do registration with a null guess" FOREVER. So
+        # it was set to 1 (reset after a single lost frame). But =1 turned out to
+        # be too aggressive: EACH reset re-initializes (clears) the local scan
+        # map, and a reset MID-SPIN leaves a ~400-point map that cannot register
+        # rotation -> icp under-counts heading. Bag diffbot_no_external_imu_
+        # 20260615_220146: a cluster of 3 resets in 1.5s during a spin lost ~90
+        # deg, and the run ended 165 deg behind the gyro -> crash (icp tracked
+        # fine BETWEEN resets; the resets were the damage).
+        # Now that icp gets a clean rotation guess from the RealSense IMU
+        # (/imu/data_body), the null-guess that motivated =1 should not recur, so
+        # we coast through short transient losses (observed clusters were 1-3
+        # frames) WITHOUT nuking the local map, and only reset if stuck for 5
+        # consecutive frames. WATCH the icp_odometry log: if "null guess" spam
+        # returns, the IMU guess is not feeding registration -> revert toward 1
+        # and pursue the architectural route (gyro as heading authority).
+        'Odom/ResetCountdown': '5'
     }]
 
     icp_odometry_remappings = [
