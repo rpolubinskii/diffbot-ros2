@@ -35,22 +35,38 @@ ekf_filter_node:
     # ~7 deg/min, while ICP held heading to ~0.1 deg/20 s stationary). Keep sensor
     # indices gap-free: odom0 (wheel), odom1 (ICP).
     odom1: /rtabmap/icp_odom
-    # ICP scan-matching is good odometry and IS fused (absolute yaw + vx + vyaw).
-    # Fusing its ABSOLUTE yaw is only valid because icp_odom now starts at yaw 0
-    # in the base frame -- see the constant-offset root cause below.
-    # ROOT CAUSE of the old constant offset: icp_odometry ran with
-    # wait_imu_to_init=True and seeded its whole output frame from the external
-    # IMU's ABSOLUTE orientation at startup. That orientation's zero is
-    # (magnetic north | gyro-init) + the -90 deg imu_link mount, none of which
-    # is the odom frame -> icp_odom was born rotated by a constant. Measured:
-    # icp's FIRST message == /imu/external/data_body to <0.1 deg, stationary,
-    # from t=0 (mag on: -128.7 deg; mag off: ~-80 deg). It was NOT drift.
-    # Two-part fix: (1) external_imu_filter.yaml use_mag=false removed the
-    # magnetic-north part; (2) diffbot.launch.py icp_odometry wait_imu_to_init=
-    # false drops the absolute-yaw seed entirely so icp starts at base yaw 0.
-    # ICP's scan-matched rotation was always correct -- only the seed was bad.
+    # ICP is fused as a DIFFERENTIAL source only: vx (idx6) + vyaw (idx11).
+    # Its ABSOLUTE yaw (idx5) is intentionally NOT fused.
+    #
+    # Why abs-yaw is OFF (regression found in bag diffbot_cal_20260615_210752):
+    # icp_odometry periodically loses tracking and RESETS (feature-poor lidar
+    # geometry during rotation; icp_structural_complexity ~0.35). On those resets
+    # its absolute yaw is corrupted -- in that bag it swept ~100 deg over 1.7 s
+    # once, and froze at a fixed heading through a real turn another time -- yet
+    # it keeps publishing that wrong yaw with tiny covariance (~1e-5). Because
+    # abs-yaw is an ABSOLUTE constraint, the EKF obeyed it and abandoned the
+    # CORRECT gyro+wheel heading: gyro and wheel INDEPENDENTLY agreed the robot
+    # turned ~-100 deg, but ICP/EKF reported only -75 deg. That ~25 deg heading
+    # error drove the robot into a wall. robot_localization cannot down-weight
+    # ICP yaw selectively (ICP under-reports its covariance), so the only safe
+    # fix is to stop fusing its absolute yaw. The earlier "stationary yaw drift
+    # ~0" result came from this same abs-yaw pin -- it looked good standing still
+    # but is dangerous under motion; it is NOT a true global reference.
+    #
+    # Absolute heading now comes from: gyro yaw RATE (imu0, short term) + rtabmap
+    # map->odom loop closure (long-term absolute correction -- the architecturally
+    # correct global reference, vs icp_odom which is itself drifting/resetting
+    # odometry). Trade-off: residual gyro-bias drift returns when stationary
+    # (partly suppressed by ICP vyaw~=0 when still) -- mitigate by recalibrating
+    # the RealSense gyro, NOT by re-pinning EKF heading to icp_odom.
+    #
+    # History (independent of the above): icp_odom's old constant offset was
+    # icp_odometry seeding its frame from the external IMU's absolute orientation
+    # (wait_imu_to_init=true + mag). Fixed in diffbot.launch.py
+    # (wait_imu_to_init=false) + external_imu_filter.yaml (use_mag=false) so icp
+    # starts at base yaw 0. That seed fix stands and is why ICP vx/vyaw are clean.
     odom1_config: [false, false, false,
-                   false, false, true,
+                   false, false, false,
                    true, false, false,
                    false, false, true,
                    false, false, false]
