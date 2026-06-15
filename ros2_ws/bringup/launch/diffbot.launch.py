@@ -276,7 +276,23 @@ def generate_launch_description():
         # consecutive frames. WATCH the icp_odometry log: if "null guess" spam
         # returns, the IMU guess is not feeding registration -> revert toward 1
         # and pursue the architectural route (gyro as heading authority).
-        'Odom/ResetCountdown': '5'
+        'Odom/ResetCountdown': '5',
+        # Tolerate faster motion between scans. icp runs at ~7.5 Hz (134 ms), so
+        # at 1 m/s the robot moves ~0.13 m per frame. The rtabmap default
+        # Icp/MaxCorrespondenceDistance (~0.1 m) is SMALLER than that, so once the
+        # robot drives fast the scan<->local-map point correspondences can no
+        # longer be found and registration collapses. Data: bag diffbot_nav_
+        # 20260615_230406, t=54.93s -- icp_translation spiked to 0.144 m/frame
+        # (~1.07 m/s) and the inlier ratio cratered 0.58->0.11->0 (corr 265->50->0)
+        # -> 5 lost frames -> reset -> robot drove into the wall it was speeding
+        # toward. icp_rotation was only ~0.1-7 deg, so this was a fast STRAIGHT-LINE
+        # failure, not a rotation one. Raise the search radius to ~0.3 m so icp can
+        # associate points up to ~2 m/s. If it starts producing confidently-wrong
+        # poses in cluttered/feature-poor spots (spurious matches), lower it.
+        # Note: Icp/MaxTranslation (rtabmap default ~0.2 m, the per-frame motion it
+        # will ACCEPT) is still above the 0.144 m seen here; raise it too only if
+        # the robot will exceed ~1.5 m/s.
+        'Icp/MaxCorrespondenceDistance': '0.3'
     }]
 
     icp_odometry_remappings = [
