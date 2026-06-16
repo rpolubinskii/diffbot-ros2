@@ -292,7 +292,24 @@ def generate_launch_description():
         # Note: Icp/MaxTranslation (rtabmap default ~0.2 m, the per-frame motion it
         # will ACCEPT) is still above the 0.144 m seen here; raise it too only if
         # the robot will exceed ~1.5 m/s.
-        'Icp/MaxCorrespondenceDistance': '0.3'
+        'Icp/MaxCorrespondenceDistance': '0.3',
+        # Also raise the per-frame translation ACCEPTANCE limit. rtabmap default
+        # Icp/MaxTranslation=0.2 m REJECTS any registration whose translation
+        # exceeds 0.2 m as "out of bounds", which nulls the velocity model and
+        # triggers the null-guess spiral. Data: log diffbot_2026-06-16_000212,
+        # 00:06:01 -- "libpointmatcher has failed: limit out of bounds:
+        # rot 0.107/0.78  tr 0.207606/0.2" was the FIRST failure (rotation was
+        # fine; translation 0.2076 m just crossed 0.2), then 8x "cannot do
+        # registration with a null guess" + 2 auto-resets. The robot was driving
+        # ~1.6 m/s (0.207 m / 0.13 s) and the constant-velocity guess
+        # under-predicted (guess was only 0.017 m), so icp found the real ~0.21 m
+        # match but the cap rejected it. 0.5 m accepts motion up to ~4 m/s at
+        # 7.5 Hz (well above the robot's speed, even with a delayed frame) while
+        # still rejecting true teleport glitches. Pair with MaxCorrespondenceDistance
+        # above (the search radius must also cover the post-guess residual).
+        # Complementary non-icp lever (user chose icp tuning): cap Nav2 max_vel_x
+        # -- 1.6 m/s indoors is what keeps over-running the scan matcher.
+        'Icp/MaxTranslation': '0.5'
     }]
 
     icp_odometry_remappings = [
