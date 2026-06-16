@@ -193,7 +193,35 @@ def generate_launch_description():
         'topic_queue_size': 30,
         'sync_queue_size': 30,
         'wait_imu_to_init': True,
-        'Reg/Force3DoF': 'true'
+        'Reg/Force3DoF': 'true',
+        # GHOSTING ROOT CAUSE (bag diffbot_MaxTranslation, log diffbot_2026-06-16_
+        # 191509.log): loop closures were NEVER accepted -- 28 candidates, 25 of
+        # them "Not enough inliers 0/20". The default Reg/Strategy=0 (Vis) verifies
+        # loop closures with VISUAL RGB-D features, but this apartment is
+        # feature-poor (blank walls): bag-of-words still FINDS revisits (48-144
+        # word matches) yet the visual RANSAC gets 0 geometric inliers, so every
+        # closure is rejected -> drift is never corrected -> the same wall is
+        # mapped twice at offset poses ("a copy of the wall hanging in the air",
+        # which Nav2's costmap then treats as a solid obstacle). The robot has a
+        # good 2D lidar already subscribed here but unused for closure. Fix: do
+        # loop-closure / proximity registration with the LIDAR (ICP) instead of
+        # sparse visual features. Detection still uses the visual vocabulary (Kp/)
+        # to FIND candidates; only the transform check switches to scan ICP.
+        'Reg/Strategy': '1',
+        # Proximity-by-space (default on) now also registers via lidar ICP -- this
+        # closes drift on nearby revisits even when appearance recognition misses.
+        'RGBD/ProximityBySpace': 'true',
+        # Keep the graph anchored at its start (do NOT optimize-from-end, which
+        # would let the whole map shift under a new closure).
+        'RGBD/OptimizeFromGraphEnd': 'false',
+        # Loop-closure ICP tolerances. This is the rtabmap SLAM node's OWN Icp/*
+        # set -- separate from icp_odometry_parameters below; rtabmap defaults
+        # (MaxCorrespondenceDistance ~0.1 m) are too tight to bridge the drift
+        # present at a revisit, so widen the search a bit and require a modest
+        # overlap before accepting a closure (guards against false closures in
+        # self-similar geometry).
+        'Icp/MaxCorrespondenceDistance': '0.3',
+        'Icp/CorrespondenceRatio': '0.3'
     }]
 
     rtabmap_remappings = [
