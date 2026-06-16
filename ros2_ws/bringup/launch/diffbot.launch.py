@@ -267,7 +267,7 @@ def generate_launch_description():
         # Ease the inlier gate slightly: a candidate already reached 16/20, and
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
-        'Vis/MinInliers': '15',
+        'Vis/MinInliers': '12',
         # 0-INLIER ROOT-CAUSE FIX (bag diffbot_DetectionRate, living room): the
         # rejected closures had STRONG 2D appearance overlap (matches 34-95; e.g.
         # 92->200/201/202 at 85/95/64 words) yet ~0 3D inliers. So 2D matching
@@ -281,7 +281,7 @@ def generate_launch_description():
         # RealSense spatial depth filter now enabled in the realsense args, which
         # smooths the depth edges at the source. (Next lever if still weak:
         # Vis/FeatureType=8 GFTT/ORB or SIFT for better-localized features.)
-        'Vis/PnPReprojError': '4.0',
+        'Vis/PnPReprojError': '3.0',
         # The one closure that passed (145<->91) was rejected at error ratio 3.1
         # vs the default 3.0 -- but it was correcting REAL accumulated drift, so a
         # large residual against the drifted graph is expected. Raise the guard to
