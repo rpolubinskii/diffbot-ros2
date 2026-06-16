@@ -441,14 +441,6 @@ def generate_launch_description():
             'align_depth.enable': 'true',
             'enable_depth': 'true',
             'enable_sync': 'true',
-            # Smooth depth at edges so corner (GFTT) keypoints used by rtabmap
-            # loop closure get reliable 3D -> fixes the "strong 2D match, 0 3D
-            # inliers" failure (see Vis/PnPReprojError note in rtabmap_parameters).
-            # SPATIAL filter only: it's intra-frame so it's safe on a moving
-            # robot. Deliberately NOT enabling the temporal filter (averages
-            # across frames -> smears depth during motion) or hole_filling
-            # (invents depth that would corrupt the 3D points).
-            'spatial_filter.enable': 'true',
             'enable_motion': 'false',
             'enable_gyro': 'true',
             'enable_accel': 'true',
