@@ -194,20 +194,28 @@ def generate_launch_description():
         'sync_queue_size': 30,
         'wait_imu_to_init': True,
         'Reg/Force3DoF': 'true',
-        # GHOSTING ROOT CAUSE (bag diffbot_MaxTranslation, log diffbot_2026-06-16_
-        # 191509.log): loop closures were NEVER accepted -- 28 candidates, 25 of
-        # them "Not enough inliers 0/20". The default Reg/Strategy=0 (Vis) verifies
-        # loop closures with VISUAL RGB-D features, but this apartment is
-        # feature-poor (blank walls): bag-of-words still FINDS revisits (48-144
-        # word matches) yet the visual RANSAC gets 0 geometric inliers, so every
-        # closure is rejected -> drift is never corrected -> the same wall is
-        # mapped twice at offset poses ("a copy of the wall hanging in the air",
-        # which Nav2's costmap then treats as a solid obstacle). The robot has a
-        # good 2D lidar already subscribed here but unused for closure. Fix: do
-        # loop-closure / proximity registration with the LIDAR (ICP) instead of
-        # sparse visual features. Detection still uses the visual vocabulary (Kp/)
-        # to FIND candidates; only the transform check switches to scan ICP.
-        'Reg/Strategy': '1',
+        # GHOSTING -- loop-closure registration strategy. History:
+        #  - Reg/Strategy=0 (Vis, default): bag diffbot_MaxTranslation rejected
+        #    ALL 28 closure candidates, 25 at "0/20 inliers". Bag-of-words FINDS
+        #    revisits (48-144 word matches) but the visual RANSAC gets 0 geometric
+        #    inliers at 640x360 -- too few crisp features on monochrome walls. No
+        #    closures -> drift never corrected -> walls mapped twice at offset
+        #    poses (the "copy of the wall hanging in the air"), which the
+        #    lidar-built /map carries into Nav2's static costmap layer as a solid.
+        #  - Reg/Strategy=1 (Icp): bag diffbot_icp_loop_closure cut rejections
+        #    28->12 BUT made the map WORSE -- a corridor got a "shifted brother".
+        #    Pure 2D-lidar ICP is under-constrained along a corridor's long axis
+        #    (aperture problem): parallel walls align but the match slides
+        #    lengthwise, so the proximity correction duplicated the corridor.
+        #  - Reg/Strategy=2 (VisIcp, current): visual feature match supplies the
+        #    loop-closure transform + the longitudinal constraint pure ICP lacks,
+        #    then lidar ICP refines it for scan-grade accuracy. This needs enough
+        #    visual features to pass, which is why the RealSense color profile was
+        #    raised 640x360 -> 1280x720 (see realsense launch_arguments). Both
+        #    changes are ONE experiment: "make visual loop closure work". If the
+        #    visual stage still can't clear Vis/MinInliers at 720p, lower it
+        #    (e.g. Vis/MinInliers=12 -- two candidates already reached 15-16/20).
+        'Reg/Strategy': '2',
         # Proximity-by-space (default on) now also registers via lidar ICP -- this
         # closes drift on nearby revisits even when appearance recognition misses.
         'RGBD/ProximityBySpace': 'true',
@@ -369,7 +377,19 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            'rgb_camera.profile': '640x360x15'
+            # Resolution UP, fps DOWN -- deliberate. The color/depth stream's only
+            # consumer is rtabmap loop-closure detection at 1 Hz (rgbd_odometry is
+            # disabled; icp_odometry uses the lidar; Nav2 costmaps use /scan only).
+            # So fps is wasted CPU here, while RESOLUTION drives visual feature
+            # yield -- the thing that makes Reg/Strategy=2 (VisIcp) closures pass
+            # on monochrome walls. 640x360 starved the visual RANSAC (0/20 inliers).
+            # 1280x720 = 4x the pixels -> far more keypoints; 6 fps keeps the
+            # continuous align_depth cost (runs at color_res x fps) near the old
+            # load. The IMU (~200 Hz) is a separate stream, unaffected by fps.
+            # If the Jetson saturates (watch the rtabmap "delay=" stat -> ~1 s at
+            # 1 Hz detection, or icp null-guess returning), drop to 848x480x6.
+            'rgb_camera.profile': '1280x720x6',
+            'depth_module.profile': '848x480x6'
         }.items(),
     )
 
