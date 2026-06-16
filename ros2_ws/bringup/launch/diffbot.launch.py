@@ -267,7 +267,7 @@ def generate_launch_description():
         # Ease the inlier gate slightly: a candidate already reached 16/20, and
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
-        'Vis/MinInliers': '20',
+        'Vis/MinInliers': '15',
         # 0-INLIER ROOT-CAUSE FIX (bag diffbot_DetectionRate, living room): the
         # rejected closures had STRONG 2D appearance overlap (matches 34-95; e.g.
         # 92->200/201/202 at 85/95/64 words) yet ~0 3D inliers. So 2D matching
