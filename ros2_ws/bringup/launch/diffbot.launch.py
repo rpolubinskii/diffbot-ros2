@@ -239,6 +239,20 @@ def generate_launch_description():
         # self-similar geometry).
         'Icp/MaxCorrespondenceDistance': '0.3',
         'Icp/CorrespondenceRatio': '0.3',
+        # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
+        # actually PASSED the visual stage (>=12 inliers) and reached ICP
+        # refinement, then died on libpointmatcher "limit out of bounds":
+        #   237->274  tr 0.231394/0.2   (log line 3819)
+        #   192->386  tr 0.207859/0.2   (log line 4696)
+        # The SLAM node's Icp/MaxTranslation was still the default 0.2 m -- our
+        # 0.5 m fix was applied ONLY to icp_odometry_parameters, not here. A loop
+        # closure's translation IS the accumulated drift it corrects (~0.2-0.23 m
+        # over a living-room loop), so the 0.2 m cap rejects exactly the useful
+        # closures. Raise to 0.5 m (rotation 0.05-0.10 rad was well under the 0.78
+        # default, so Icp/MaxRotation is left alone). Complements the visual fix
+        # below: depth-quality gets MORE closures through the visual gate; this
+        # stops the survivors dying at the ICP gate.
+        'Icp/MaxTranslation': '0.5',
         # SURGICAL VISUAL-CLOSURE FIX (bag diffbot_vis_loop_closure showed good 2D
         # matches=54-85 but ~0 3D inliers -> visual geometric verification failing
         # on unreliable depth). The camera is a RealSense D455 (~95 mm baseline,
@@ -254,6 +268,20 @@ def generate_launch_description():
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
         'Vis/MinInliers': '12',
+        # 0-INLIER ROOT-CAUSE FIX (bag diffbot_DetectionRate, living room): the
+        # rejected closures had STRONG 2D appearance overlap (matches 34-95; e.g.
+        # 92->200/201/202 at 85/95/64 words) yet ~0 3D inliers. So 2D matching
+        # WORKS -- the DEPTH at the matched keypoints is the problem. The default
+        # GFTT detector picks CORNERS, which sit on object edges / depth
+        # discontinuities where RealSense stereo depth is noisiest and "bleeds",
+        # so those features carry valid-but-wrong 3D -> PnP finds no consistent
+        # transform -> 0 inliers even in a feature-rich room. The depth CAP didn't
+        # help because it's depth NOISE (at edges), not depth RANGE. Loosen the
+        # PnP reprojection gate 2->4 px to tolerate that noise; paired with the
+        # RealSense spatial depth filter now enabled in the realsense args, which
+        # smooths the depth edges at the source. (Next lever if still weak:
+        # Vis/FeatureType=8 GFTT/ORB or SIFT for better-localized features.)
+        'Vis/PnPReprojError': '4.0',
         # The one closure that passed (145<->91) was rejected at error ratio 3.1
         # vs the default 3.0 -- but it was correcting REAL accumulated drift, so a
         # large residual against the drifted graph is expected. Raise the guard to
@@ -413,6 +441,14 @@ def generate_launch_description():
             'align_depth.enable': 'true',
             'enable_depth': 'true',
             'enable_sync': 'true',
+            # Smooth depth at edges so corner (GFTT) keypoints used by rtabmap
+            # loop closure get reliable 3D -> fixes the "strong 2D match, 0 3D
+            # inliers" failure (see Vis/PnPReprojError note in rtabmap_parameters).
+            # SPATIAL filter only: it's intra-frame so it's safe on a moving
+            # robot. Deliberately NOT enabling the temporal filter (averages
+            # across frames -> smears depth during motion) or hole_filling
+            # (invents depth that would corrupt the 3D points).
+            'spatial_filter.enable': 'true',
             'enable_motion': 'false',
             'enable_gyro': 'true',
             'enable_accel': 'true',
