@@ -209,12 +209,21 @@ def generate_launch_description():
         #    lengthwise, so the proximity correction duplicated the corridor.
         #  - Reg/Strategy=2 (VisIcp, current): visual feature match supplies the
         #    loop-closure transform + the longitudinal constraint pure ICP lacks,
-        #    then lidar ICP refines it for scan-grade accuracy. This needs enough
-        #    visual features to pass, which is why the RealSense color profile was
-        #    raised 640x360 -> 1280x720 (see realsense launch_arguments). Both
-        #    changes are ONE experiment: "make visual loop closure work". If the
-        #    visual stage still can't clear Vis/MinInliers at 720p, lower it
-        #    (e.g. Vis/MinInliers=12 -- two candidates already reached 15-16/20).
+        #    then lidar ICP refines it. Tested in bag diffbot_vis_loop_closure:
+        #    NO doubled wall (corridor slide gone) and CPU fine (rtabmap delay
+        #    ~0.4 s), BUT still ~0 applied closures -> drift uncorrected -> /map
+        #    quality issues remain. Cause (from the log): candidates get HEALTHY
+        #    2D appearance matches (54-85) but ~0 3D inliers -- the visual
+        #    geometric verification fails because RealSense depth at the matched
+        #    keypoints is unreliable on this apartment's monochrome/far walls
+        #    (NOT a resolution problem: camera was 1280x720 all along, see
+        #    realsense args). The one closure that did pass (145<->91) was then
+        #    rejected by RGBD/OptimizeMaxError (ratio 3.1 vs 3.0). Next levers if
+        #    continuing on visual: cap feature depth to the reliable range
+        #    (Kp/MaxDepth + Vis/MaxDepth ~3-4 m so far garbage-depth keypoints
+        #    stop poisoning RANSAC), Vis/MinInliers 20->12, RGBD/OptimizeMaxError
+        #    3->5. Kept Reg/Strategy=2 as the safest of {0 no closures, 1 corridor
+        #    slide, 2 safe-but-currently-inert}.
         'Reg/Strategy': '2',
         # Proximity-by-space (default on) now also registers via lidar ICP -- this
         # closes drift on nearby revisits even when appearance recognition misses.
@@ -229,7 +238,38 @@ def generate_launch_description():
         # overlap before accepting a closure (guards against false closures in
         # self-similar geometry).
         'Icp/MaxCorrespondenceDistance': '0.3',
-        'Icp/CorrespondenceRatio': '0.3'
+        'Icp/CorrespondenceRatio': '0.3',
+        # SURGICAL VISUAL-CLOSURE FIX (bag diffbot_vis_loop_closure showed good 2D
+        # matches=54-85 but ~0 3D inliers -> visual geometric verification failing
+        # on unreliable depth). The camera is a RealSense D455 (~95 mm baseline,
+        # global-shutter RGB), reliable to ~6 m. By default Kp/MaxDepth and
+        # Vis/MaxDepth are 0 (no limit), so keypoints beyond reliable range carry
+        # garbage 3D positions that poison the PnP RANSAC -> 0 inliers. Cap both
+        # to 5 m (inside the D455's reliable range) so only trustworthy-depth
+        # keypoints feed loop-closure matching + registration, without discarding
+        # the good mid-range features the D455 resolves well.
+        'Kp/MaxDepth': '5.0',
+        'Vis/MaxDepth': '5.0',
+        # Ease the inlier gate slightly: a candidate already reached 16/20, and
+        # 6/20, so 12 lets marginal-but-real closures through (still well above
+        # noise). Raise back toward 20 if false closures appear.
+        'Vis/MinInliers': '12',
+        # The one closure that passed (145<->91) was rejected at error ratio 3.1
+        # vs the default 3.0 -- but it was correcting REAL accumulated drift, so a
+        # large residual against the drifted graph is expected. Raise the guard to
+        # 5.0 so legitimate drift corrections survive. This is the riskiest knob
+        # here (it's the last defense against a wrong closure warping the map) --
+        # if the map folds/teleports after a closure, drop it back to 3.0 first.
+        'RGBD/OptimizeMaxError': '5.0',
+        # Capture more data WHILE MOVING. rtabmap filters input frames down to
+        # this rate (default 1 Hz -> our log showed "Rate=1.00s"), dropping the
+        # rest, so this -- NOT camera fps -- is the real "data density" knob. At
+        # 2 Hz the graph gets ~2x the nodes during driving -> finer map + more
+        # loop-closure opportunities. CPU: rtabmap processing was ~0.13-0.22 s per
+        # iteration at 1 Hz; 2 Hz roughly doubles that thread load and the working
+        # memory grows faster, so WATCH the "delay=" stat -- if it climbs toward
+        # ~1 s, drop to 1.5.
+        'Rtabmap/DetectionRate': '2'
     }]
 
     rtabmap_remappings = [
@@ -377,19 +417,26 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            # Resolution UP, fps DOWN -- deliberate. The color/depth stream's only
-            # consumer is rtabmap loop-closure detection at 1 Hz (rgbd_odometry is
-            # disabled; icp_odometry uses the lidar; Nav2 costmaps use /scan only).
-            # So fps is wasted CPU here, while RESOLUTION drives visual feature
-            # yield -- the thing that makes Reg/Strategy=2 (VisIcp) closures pass
-            # on monochrome walls. 640x360 starved the visual RANSAC (0/20 inliers).
-            # 1280x720 = 4x the pixels -> far more keypoints; 6 fps keeps the
-            # continuous align_depth cost (runs at color_res x fps) near the old
-            # load. The IMU (~200 Hz) is a separate stream, unaffected by fps.
-            # If the Jetson saturates (watch the rtabmap "delay=" stat -> ~1 s at
-            # 1 Hz detection, or icp null-guess returning), drop to 848x480x6.
-            'rgb_camera.profile': '1280x720x6',
-            'depth_module.profile': '848x480x6'
+            # CORRECT param names: this realsense2_camera build uses
+            # rgb_camera.color_profile / depth_module.depth_profile. The old
+            # 'rgb_camera.profile' / 'depth_module.profile' were SILENTLY IGNORED
+            # ("Parameter ... is not supported" in the log), so across every run
+            # the camera ran at its DEFAULTS -- color 1280x720x30, depth
+            # 848x480x30 -- NOT the 640x360 the config implied. Resolution was
+            # therefore NEVER the visual-loop-closure bottleneck (always 720p).
+            # fps choice (researched): rtabmap drops input frames to satisfy
+            # Rtabmap/DetectionRate (see rtabmap_parameters), so fps above that
+            # rate adds NO map data -- the data-density knob is DetectionRate, not
+            # fps. But higher fps still helps two real things during motion: a
+            # sharper frame is available to SELECT at each detection tick, and the
+            # camera<->lidar approx_sync skew shrinks (~2.5 cm at 30 fps vs ~5 cm
+            # at 15 fps @ 1.6 m/s). The Jetson already ran 720p@30 + depth 30 fine
+            # (rtabmap delay ~0.4 s), so keep BOTH full res and 30 fps -- no
+            # fps/res trade needed. (Odometry is lidar icp_odometry, unaffected by
+            # camera fps; the "fast motion loses tracking" reports are for visual
+            # rgbd_odometry, which is disabled here.)
+            'rgb_camera.color_profile': '1280x720x30',
+            'depth_module.depth_profile': '848x480x30'
         }.items(),
     )
 
