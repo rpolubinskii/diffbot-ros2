@@ -260,13 +260,28 @@ def generate_launch_description():
         # "edge 146->147, type=0" (a sequential icp-odom link) carrying a ~9.6 deg
         # rotation glitch that becomes the max residual on every closure attempt.
         # 6.0 admits the cluster (max 5.69) so the real closures can apply and the
-        # optimizer can distribute that one bad edge's error. NOTE: this is the 3rd
-        # bump of this gate -- the durable fix for "few bad odom edges block many
-        # good closures" is the ROBUST optimizer (Optimizer/Robust=true +
-        # Optimizer/Strategy g2o/GTSAM + set THIS to 0), which down-weights outlier
-        # edges instead of batch-rejecting. Go there if 6.0 still rejects or if the
-        # bad edge visibly warps the map.
-        'RGBD/OptimizeMaxError': '6.0',
+        # optimizer can distribute that one bad edge's error.
+        #
+        # SWITCHED TO ROBUST OPTIMIZER 2026-06-17 (bag diffbot_orb_optmax6_2). The
+        # gate-bumping is over: a 2nd good-revisit run hit the SAME failure -- a real
+        # closure (355<->234) reached the optimizer but was batch-rejected because a
+        # single bad NEIGHBOR (odometry) edge "354->355, type=0" carried a ~12.6 deg
+        # rotation glitch (ratio 7.24 > 6.0). The glitch magnitude VARIES run-to-run
+        # (9.6 deg in gftt_orb, 12.6 deg here), so NO fixed OptimizeMaxError reliably
+        # admits real closures while an icp rotation glitch exists. The right tool is
+        # robust graph optimization (Vertigo switchable constraints / dynamic
+        # covariance scaling): it DOWN-WEIGHTS the individual outlier odometry edge
+        # instead of rejecting the whole batch, so the good closure applies and the
+        # bad edge is discounted. RGBD/OptimizeMaxError MUST be 0 with Robust=true
+        # (they are mutually exclusive in rtabmap). Optimizer/Strategy must be a
+        # robust-capable backend (1=g2o or 2=GTSAM, NOT 0=TORO) -- forcing g2o(1),
+        # which carries Vertigo. VERIFY from the next log that rtabmap reports g2o +
+        # robust enabled; if g2o/Vertigo isn't in the Jetson build, try Strategy=2
+        # (GTSAM). If robust destabilizes (over-down-weights real closures), revert
+        # to OptimizeMaxError=6.0 + Robust=false.
+        'RGBD/OptimizeMaxError': '0',
+        'Optimizer/Robust': 'true',
+        'Optimizer/Strategy': '1',
         # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
         # actually PASSED the visual stage (>=12 inliers) and reached ICP
         # refinement, then died on libpointmatcher "limit out of bounds":
