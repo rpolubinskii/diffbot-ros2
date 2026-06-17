@@ -34,7 +34,20 @@ ekf_filter_node:
     # exist on the node) and in bags (EKF yaw == the raw gyro integral, drifting
     # ~7 deg/min, while ICP held heading to ~0.1 deg/20 s stationary). Keep sensor
     # indices gap-free: odom0 (wheel), odom1 (ICP).
-    odom1: /rtabmap/icp_odom
+    #
+    # 2026-06-17: odom1 now reads /rtabmap/icp_odom_REWEIGHTED, not the raw
+    # /rtabmap/icp_odom. The diffbot_icp_odom_reweighter node (diffbot pkg,
+    # launched in diffbot.launch.py) passes icp_odom through UNCHANGED except it
+    # inflates the yaw covariance when icp's rotation rate disagrees with the
+    # RealSense gyro (spins icp mis-measures). icp reports a dishonest fixed
+    # ~1.5e-5 yaw variance and is blind to its own rotational error (bags
+    # diffbot_latest_2/_3), so the abs-yaw pin below dragged heading through bad
+    # spins. With the relay, the pin holds when icp & gyro AGREE (stable -> clean
+    # map, unchanged from baseline) and RELAXES when they disagree (-> the gyro
+    # rate carries heading through the spin). The raw /rtabmap/icp_odom still
+    # publishes for recording/debug. NOTE: if the reweighter node is not running,
+    # this topic is silent and ICP is NOT fused -> revert to /rtabmap/icp_odom.
+    odom1: /rtabmap/icp_odom_reweighted
     # ICP is fused with ABSOLUTE yaw (idx5) + vx (idx6) + vyaw (idx11).
     #
     # Why abs-yaw is ON -- it is REQUIRED for map quality, not optional:

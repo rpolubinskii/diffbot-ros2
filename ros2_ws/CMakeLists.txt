@@ -12,6 +12,7 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   action_msgs
   hardware_interface
+  nav_msgs
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -50,6 +51,15 @@ ament_target_dependencies(
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
+add_executable(diffbot_icp_odom_reweighter
+  src/icp_odom_reweighter.cpp
+)
+target_compile_features(diffbot_icp_odom_reweighter PUBLIC cxx_std_17)
+ament_target_dependencies(
+  diffbot_icp_odom_reweighter PUBLIC
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
 # Export hardware plugins
 pluginlib_export_plugin_description_file(hardware_interface diffbot.xml)
 
@@ -73,6 +83,9 @@ install(TARGETS diffbot
   RUNTIME DESTINATION bin
 )
 install(TARGETS diffbot_lidar_standby_manager
+  DESTINATION lib/diffbot
+)
+install(TARGETS diffbot_icp_odom_reweighter
   DESTINATION lib/diffbot
 )
 

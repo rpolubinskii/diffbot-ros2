@@ -532,6 +532,33 @@ def generate_launch_description():
         remappings=managed_icp_odometry_remappings,
     )
 
+    # Honest-yaw-covariance relay: republishes /rtabmap/icp_odom as
+    # /rtabmap/icp_odom_reweighted with the yaw covariance inflated whenever icp's
+    # rotation rate disagrees with the RealSense gyro (i.e. spins icp mis-measures
+    # on self-similar walls). The EKF fuses the reweighted topic (ekf.yaml odom1),
+    # so it pins heading to icp when they agree and yields to the gyro during
+    # spins. icp is blind to its own rotational error (covariance is a fixed
+    # 0.1x-x scalar, quality signals don't degrade on spins -- bags _2/_3); the
+    # gyro is the only independent reference. Both managed + unmanaged
+    # icp_odometry publish /rtabmap/icp_odom, so one always-on relay covers both.
+    icp_odom_reweighter = Node(
+        package='diffbot',
+        executable='diffbot_icp_odom_reweighter',
+        name='diffbot_icp_odom_reweighter',
+        output='screen',
+        parameters=[{
+            'input_odom_topic': '/rtabmap/icp_odom',
+            'imu_topic': '/imu/data_body',
+            'output_odom_topic': '/rtabmap/icp_odom_reweighted',
+            'yaw_disagreement_gain': 2.0,      # KEY knob: added yaw std per rad/s mismatch
+            'disagreement_deadband': 0.1,      # rad/s below = noise, no inflation
+            'min_yaw_variance': 0.0,           # 0 = pass icp's value when agreeing
+            'max_yaw_variance': 1.0,           # clamp (~57 deg = ignore icp yaw)
+            'reweight_twist': True,            # also down-weight icp vyaw on mismatch
+            'gyro_timeout_sec': 0.5,           # stale gyro -> pass through, warn
+        }],
+    )
+
     rtabmap_slam = Node(
         package='rtabmap_slam', executable='rtabmap', output='screen',
         condition=UnlessCondition(manage_lidar_standby),
@@ -599,6 +626,7 @@ def generate_launch_description():
         # rgbd_odometry,
         icp_odometry,
         managed_icp_odometry,
+        icp_odom_reweighter,
         rtabmap_slam,
         managed_rtabmap_slam,
         lidar_standby_manager,
