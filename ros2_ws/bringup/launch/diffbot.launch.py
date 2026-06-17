@@ -230,7 +230,7 @@ def generate_launch_description():
         'RGBD/ProximityBySpace': 'true',
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
-        'RGBD/OptimizeFromGraphEnd': 'false',
+        'RGBD/OptimizeFromGraphEnd': 'true',
         # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
         # actually PASSED the visual stage (>=12 inliers) and reached ICP
         # refinement, then died on libpointmatcher "limit out of bounds":
