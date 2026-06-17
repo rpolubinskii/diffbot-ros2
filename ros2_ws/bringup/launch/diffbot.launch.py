@@ -231,6 +231,26 @@ def generate_launch_description():
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
         'RGBD/OptimizeFromGraphEnd': 'false',
+        # THIRD GATE -- the dominant failure in bag diffbot_latest (log
+        # diffbot_2026-06-17_213820). After the depth-cap rollback + DetectionRate
+        # =10, closures FINALLY pass the visual gate with good inliers AND survive
+        # the ICP/MaxTranslation gate -- then 21 of them die HERE, at the graph
+        # optimizer: "wrong loop closure ... maximum graph error ratio 3.05-4.49 ...
+        # RGBD/OptimizeMaxError is 3.000000". The error is purely ROTATIONAL
+        # (abs error 5.5-7.9 deg, stddev ~1.8 deg) and concentrates on one edge,
+        # 186->197 type=2 (a ProximityBySpace link), cited in 16 of the 21 -- i.e.
+        # icp_odometry accumulated ~6-7 deg of YAW drift across one spin, the visual
+        # closure correctly proposes that 6-7 deg correction, and the default 3.0
+        # gate (= reject above ~5.3 deg) throws out the real fix. THIS is the user's
+        # "last visual feature gets misplaced when rotating": the correction exists
+        # but is rejected. Raise to 5.0 (= reject above ~8.9 deg): admits every one
+        # of the 21 observed real closures (max ratio 4.49) while still rejecting a
+        # true teleport/false-positive (those land well above 5x stddev). The
+        # closures are already double-verified (Vis/MinInliers>=12 + Icp/MaxTrans
+        # <=0.5), so loosening this gate is not "discarding data" -- it lets the
+        # verified drift correction apply. Root cause behind the 6-7 deg (icp yaw
+        # drift during spins) is the separate rgbd_odometry-fusion lever.
+        'RGBD/OptimizeMaxError': '5.0',
         # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
         # actually PASSED the visual stage (>=12 inliers) and reached ICP
         # refinement, then died on libpointmatcher "limit out of bounds":
