@@ -393,17 +393,6 @@ def generate_launch_description():
         # above (the search radius must also cover the post-guess residual).
         # Complementary non-icp lever (user chose icp tuning): cap Nav2 max_vel_x
         # -- 1.6 m/s indoors is what keeps over-running the scan matcher.
-        # PROPER-COVARIANCE ATTEMPT -- TESTED AND REVERTED 2026-06-17 (bag
-        # diffbot_latest_3). Tried 'Icp/PointToPlane': 'true' hoping a Hessian-based
-        # registration would yield a DIRECTIONAL covariance instead of the fixed
-        # scalar icp feeds the EKF (yaw variance hardwired to exactly 0.1x x
-        # variance). Result: the yaw:x ratio stayed EXACTLY 0.1000 (1 distinct
-        # value, identical to point-to-point) -- rtabmap stamps the same fixed-ratio
-        # scalar regardless of registration type. icp cannot self-report honest yaw
-        # covariance; do NOT re-try point-to-plane for this. The fix is external:
-        # a gyro covariance-relay node (icp is blind to its own rotational error;
-        # only the gyro can detect when icp yaw is wrong). See
-        # odom-sensor-characterization memory.
         'Icp/MaxTranslation': '0.5'
     }]
 

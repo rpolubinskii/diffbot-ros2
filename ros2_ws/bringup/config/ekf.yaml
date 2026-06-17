@@ -67,36 +67,14 @@ ekf_filter_node:
     # true + mag). Fixed in diffbot.launch.py (wait_imu_to_init=false) +
     # external_imu_filter.yaml (use_mag=false) so icp starts at base yaw 0. That
     # fix is why fusing ICP absolute yaw is valid (icp_odom shares the base frame).
-    # ROTATION-RATE HANDOFF TO THE GYRO (2026-06-17, bag diffbot_latest_2 analysis).
-    # icp's vyaw (idx11) was being fused, but icp is BLIND to its own rotational
-    # error: its reported covariance is a single scalar on a fixed diagonal (yaw
-    # variance == 0.1x x variance, ALWAYS), and its quality signals
-    # (structural_complexity, inliers_ratio) do NOT degrade during spins -- it
-    # finds good correspondences at a slightly-wrong rotation on self-similar
-    # walls and reports high confidence anyway. The RealSense gyro (imu0 idx11,
-    # 198 Hz) measures true rotation RATE from physics, independent of scan
-    # geometry, so it is the reliable spin-time source. So: STOP fusing icp vyaw
-    # (idx11 true->false) and let the gyro be the SOLE rotation-rate source. icp
-    # KEEPS absolute yaw (idx5) as the slow drift anchor + vx (idx6).
     odom1_config: [false, false, false,
                    false, false, true,
                    true, false, false,
-                   false, false, false,
+                   false, false, true,
                    false, false, false]
     odom1_differential: false
     odom1_relative: false
     odom1_queue_size: 10
-    # MAHALANOBIS REJECTION GATE -- TESTED AND REMOVED 2026-06-17 (bag
-    # diffbot_latest_3). Added odom1_pose_rejection_threshold: 5.0 hoping the EKF
-    # would drop icp's abs-yaw when it diverged from the gyro-driven prediction.
-    # Result: NO effect -- EKF net heading stayed identical to icp (76.2 vs 76.1
-    # deg), same as before the change. The abs-yaw pin (idx5) with icp's dishonest
-    # ~1.4e-5 covariance dominates regardless; the gate at 5 sigma never
-    # meaningfully fired. PROVES the config-only path cannot loosen icp's grip --
-    # only an HONEST (relay-supplied) icp yaw covariance can. Removed so it won't
-    # confound the relay node (whose honest covariance is the proper down-weighting
-    # mechanism, not a hard gate). icp vyaw stays OFF above: that is the correct
-    # staging for the node (gyro = rate authority, relay = honest abs-yaw cov).
 
     imu0: /imu/data_body
     # RealSense gyro is the heading source: dead-reckoning wheel-vx + gyro-yaw
