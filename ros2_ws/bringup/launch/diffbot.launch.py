@@ -227,7 +227,7 @@ def generate_launch_description():
         'Reg/Strategy': '2',
         # Proximity-by-space (default on) now also registers via lidar ICP -- this
         # closes drift on nearby revisits even when appearance recognition misses.
-        'RGBD/ProximityBySpace': 'false',
+        'RGBD/ProximityBySpace': 'true',
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
         'RGBD/OptimizeFromGraphEnd': 'false',
@@ -245,6 +245,17 @@ def generate_launch_description():
         # below: depth-quality gets MORE closures through the visual gate; this
         # stops the survivors dying at the ICP gate.
         'Icp/MaxTranslation': '0.5',
+        # SURGICAL VISUAL-CLOSURE FIX (bag diffbot_vis_loop_closure showed good 2D
+        # matches=54-85 but ~0 3D inliers -> visual geometric verification failing
+        # on unreliable depth). The camera is a RealSense D455 (~95 mm baseline,
+        # global-shutter RGB), reliable to ~6 m. By default Kp/MaxDepth and
+        # Vis/MaxDepth are 0 (no limit), so keypoints beyond reliable range carry
+        # garbage 3D positions that poison the PnP RANSAC -> 0 inliers. Cap both
+        # to 5 m (inside the D455's reliable range) so only trustworthy-depth
+        # keypoints feed loop-closure matching + registration, without discarding
+        # the good mid-range features the D455 resolves well.
+        'Kp/MaxDepth': '5.0',
+        'Vis/MaxDepth': '5.0',
         # Ease the inlier gate slightly: a candidate already reached 16/20, and
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
