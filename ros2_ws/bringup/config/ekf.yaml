@@ -86,19 +86,17 @@ ekf_filter_node:
     odom1_differential: false
     odom1_relative: false
     odom1_queue_size: 10
-    # MAHALANOBIS REJECTION GATE -- "icp yaw has lower confidence during spins",
-    # implemented as rejection. The EKF compares each icp pose against its own
-    # prediction (now driven by the honest gyro rate) using the innovation
-    # covariance; if icp's absolute yaw disagrees beyond this many sigma -- exactly
-    # what happens when icp under-counts a spin while the gyro got it right -- the
-    # measurement is REJECTED. When icp agrees (stable driving), it is accepted and
-    # corrects drift. This is NOT the unpinning warned about above (which dropped
-    # abs-yaw entirely -> gyro drift -> ghosting): the pin stays fully active
-    # whenever icp is trustworthy; only demonstrably-wrong spin readings are
-    # dropped. THIS IS THE KEY TUNING KNOB: too low rejects good corrections (drift
-    # returns), too high never fires (no effect). Start at 5.0 sigma; watch the EKF
-    # debug for rejected measurements during spins vs straight driving and adjust.
-    odom1_pose_rejection_threshold: 5.0
+    # MAHALANOBIS REJECTION GATE -- TESTED AND REMOVED 2026-06-17 (bag
+    # diffbot_latest_3). Added odom1_pose_rejection_threshold: 5.0 hoping the EKF
+    # would drop icp's abs-yaw when it diverged from the gyro-driven prediction.
+    # Result: NO effect -- EKF net heading stayed identical to icp (76.2 vs 76.1
+    # deg), same as before the change. The abs-yaw pin (idx5) with icp's dishonest
+    # ~1.4e-5 covariance dominates regardless; the gate at 5 sigma never
+    # meaningfully fired. PROVES the config-only path cannot loosen icp's grip --
+    # only an HONEST (relay-supplied) icp yaw covariance can. Removed so it won't
+    # confound the relay node (whose honest covariance is the proper down-weighting
+    # mechanism, not a hard gate). icp vyaw stays OFF above: that is the correct
+    # staging for the node (gyro = rate authority, relay = honest abs-yaw cov).
 
     imu0: /imu/data_body
     # RealSense gyro is the heading source: dead-reckoning wheel-vx + gyro-yaw
