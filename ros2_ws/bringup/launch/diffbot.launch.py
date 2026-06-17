@@ -249,13 +249,6 @@ def generate_launch_description():
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
         'Vis/MinInliers': '12',
-        # The one closure that passed (145<->91) was rejected at error ratio 3.1
-        # vs the default 3.0 -- but it was correcting REAL accumulated drift, so a
-        # large residual against the drifted graph is expected. Raise the guard to
-        # 5.0 so legitimate drift corrections survive. This is the riskiest knob
-        # here (it's the last defense against a wrong closure warping the map) --
-        # if the map folds/teleports after a closure, drop it back to 3.0 first.
-        'RGBD/OptimizeMaxError': '5.0',
         # Capture more data WHILE MOVING. rtabmap filters input frames down to
         # this rate (default 1 Hz -> our log showed "Rate=1.00s"), dropping the
         # rest, so this -- NOT camera fps -- is the real "data density" knob. At
@@ -264,7 +257,7 @@ def generate_launch_description():
         # iteration at 1 Hz; 2 Hz roughly doubles that thread load and the working
         # memory grows faster, so WATCH the "delay=" stat -- if it climbs toward
         # ~1 s, drop to 1.5.
-        'Rtabmap/DetectionRate': '25'
+        'Rtabmap/DetectionRate': '10'
     }]
 
     rtabmap_remappings = [
