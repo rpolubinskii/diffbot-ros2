@@ -231,6 +231,14 @@ def generate_launch_description():
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
         'RGBD/OptimizeFromGraphEnd': 'false',
+        # Loop-closure ICP tolerances. This is the rtabmap SLAM node's OWN Icp/*
+        # set -- separate from icp_odometry_parameters below; rtabmap defaults
+        # (MaxCorrespondenceDistance ~0.1 m) are too tight to bridge the drift
+        # present at a revisit, so widen the search a bit and require a modest
+        # overlap before accepting a closure (guards against false closures in
+        # self-similar geometry).
+        'Icp/MaxCorrespondenceDistance': '0.3',
+        'Icp/CorrespondenceRatio': '0.3',
         # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
         # actually PASSED the visual stage (>=12 inliers) and reached ICP
         # refinement, then died on libpointmatcher "limit out of bounds":
