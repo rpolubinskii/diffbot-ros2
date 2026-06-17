@@ -264,7 +264,7 @@ def generate_launch_description():
         # iteration at 1 Hz; 2 Hz roughly doubles that thread load and the working
         # memory grows faster, so WATCH the "delay=" stat -- if it climbs toward
         # ~1 s, drop to 1.5.
-        'Rtabmap/DetectionRate': '5'
+        'Rtabmap/DetectionRate': '10'
     }]
 
     rtabmap_remappings = [
