@@ -393,7 +393,28 @@ def generate_launch_description():
         # above (the search radius must also cover the post-guess residual).
         # Complementary non-icp lever (user chose icp tuning): cap Nav2 max_vel_x
         # -- 1.6 m/s indoors is what keeps over-running the scan matcher.
-        'Icp/MaxTranslation': '0.5'
+        'Icp/MaxTranslation': '0.5',
+        # PROPER-COVARIANCE ATTEMPT (bag diffbot_latest_2 analysis): the covariance
+        # icp feeds the EKF is NOT a real directional estimate -- yaw variance was
+        # hardwired to exactly 0.1x the x variance (10.0x ratio at min/median/max,
+        # 617 distinct magnitudes but the ratio never moves), i.e. one scalar
+        # quality number stamped on a fixed diagonal. Worse, icp's own quality
+        # signals (structural_complexity flat ~0.43, inliers_ratio ~0.70-0.77,
+        # correspondences ~244-253) DON'T degrade during spins (compared lowest vs
+        # highest-rotation 20% of frames; 0 lost frames even at 1.95 rad/s) -- icp
+        # is "confidently wrong", finding good correspondences at a slightly-wrong
+        # rotation on self-similar walls (aperture problem). Point-to-plane derives
+        # covariance from the cost-function Hessian, which CAN be directionally
+        # aware (inflate the under-constrained axis) instead of the fixed 0.1x.
+        # TEST GATE: re-extract icp_odom pose.covariance[35] vs [0] next run -- if
+        # the yaw:x ratio stops being a constant 0.1 and tracks rotation, icp
+        # self-assessment is viable; if it stays flat, this path is closed and we
+        # go to the gyro covariance-relay node. RISK: point-to-plane on sparse 2D
+        # scans is more sensitive to normal-estimation noise; if icp tracking
+        # regresses ("null guess"/lost returns), REVERT THIS FIRST (it is the only
+        # registration-behavior change here). Companions Icp/PointToPlaneK=5 /
+        # Radius=1.0 left at defaults.
+        'Icp/PointToPlane': 'true'
     }]
 
     icp_odometry_remappings = [
