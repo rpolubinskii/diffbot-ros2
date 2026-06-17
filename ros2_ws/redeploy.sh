@@ -1,4 +1,4 @@
 git pull
 colcon build
-source install/setup.sh
+source install/setup.zsh
 ros2 launch diffbot diffbot.launch.py
