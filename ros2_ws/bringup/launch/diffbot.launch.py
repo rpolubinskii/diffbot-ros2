@@ -224,7 +224,7 @@ def generate_launch_description():
         #    stop poisoning RANSAC), Vis/MinInliers 20->12, RGBD/OptimizeMaxError
         #    3->5. Kept Reg/Strategy=2 as the safest of {0 no closures, 1 corridor
         #    slide, 2 safe-but-currently-inert}.
-        'Reg/Strategy': '2',
+        'Reg/Strategy': '0',
         # Proximity-by-space (default on) now also registers via lidar ICP -- this
         # closes drift on nearby revisits even when appearance recognition misses.
         'RGBD/ProximityBySpace': 'true',
