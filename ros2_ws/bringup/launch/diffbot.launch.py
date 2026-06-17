@@ -269,6 +269,25 @@ def generate_launch_description():
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
         'Vis/MinInliers': '12',
+        # FEATURE TYPE: GFTT/ORB (8) instead of the default GFTT/BRIEF (6).
+        # Across every run loop closures die at the 3D verification gate
+        # ("Not enough inliers 0/12 (matches=41)") -- plenty of 2D matches, ~0
+        # geometric inliers. BRIEF is NOT rotation-invariant, so on a revisit from
+        # a different heading the descriptors mismatch, leaving few CORRECT
+        # correspondences for PnP RANSAC. ORB (Oriented FAST + Rotated BRIEF) IS
+        # rotation-invariant -> better cross-viewpoint matches -> more chance of a
+        # consistent inlier set. Set on BOTH the loop-closure-DETECTION vocabulary
+        # (Kp/DetectorStrategy) and the visual REGISTRATION/PnP (Vis/FeatureType)
+        # so the whole pipeline is consistent. ORB is binary like BRIEF (same cheap
+        # Hamming matching) and always built -- no CPU/availability risk, unlike
+        # SIFT. CAVEAT: the keypoint DETECTOR stays GFTT (corners) in 8 -- only the
+        # descriptor changes. If the real cause is noisy DEPTH at corner keypoints
+        # (corners sit on depth-discontinuity edges), inliers may still not climb;
+        # the next lever is then SIFT (=1, a blob detector that avoids edges) or
+        # pure ORB (=2). VALIDATION GATE: watch for "Added loop closure" / inliers
+        # climbing past 12 on revisits.
+        'Kp/DetectorStrategy': '8',
+        'Vis/FeatureType': '8',
         # Capture more data WHILE MOVING. rtabmap filters input frames down to
         # this rate (default 1 Hz -> our log showed "Rate=1.00s"), dropping the
         # rest, so this -- NOT camera fps -- is the real "data density" knob. At
