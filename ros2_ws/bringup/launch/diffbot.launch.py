@@ -227,7 +227,7 @@ def generate_launch_description():
         'Reg/Strategy': '2',
         # Proximity-by-space (default on) now also registers via lidar ICP -- this
         # closes drift on nearby revisits even when appearance recognition misses.
-        'RGBD/ProximityBySpace': 'true',
+        'RGBD/ProximityBySpace': 'false',
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
         'RGBD/OptimizeFromGraphEnd': 'false',
