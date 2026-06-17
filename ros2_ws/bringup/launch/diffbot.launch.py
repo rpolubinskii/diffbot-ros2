@@ -250,7 +250,23 @@ def generate_launch_description():
         # <=0.5), so loosening this gate is not "discarding data" -- it lets the
         # verified drift correction apply. Root cause behind the 6-7 deg (icp yaw
         # drift during spins) is the separate rgbd_odometry-fusion lever.
-        'RGBD/OptimizeMaxError': '5.0',
+        #
+        # 5.0 -> 6.0 on 2026-06-17 (bag diffbot_gftt_orb). GFTT/ORB fixed the
+        # 0-inlier problem -> 18 REAL closures now pass the inlier gate and reach
+        # this optimizer gate, but all are rejected with error ratios tightly
+        # clustered 5.007-5.686 -- just above 5.0. The culprit is NOT the closures
+        # (node pairs are consistent revisits: 400-404 -> 1/250/346, 345 -> many
+        # early nodes) but ONE bad odometry NEIGHBOR edge: 16 of 18 cite
+        # "edge 146->147, type=0" (a sequential icp-odom link) carrying a ~9.6 deg
+        # rotation glitch that becomes the max residual on every closure attempt.
+        # 6.0 admits the cluster (max 5.69) so the real closures can apply and the
+        # optimizer can distribute that one bad edge's error. NOTE: this is the 3rd
+        # bump of this gate -- the durable fix for "few bad odom edges block many
+        # good closures" is the ROBUST optimizer (Optimizer/Robust=true +
+        # Optimizer/Strategy g2o/GTSAM + set THIS to 0), which down-weights outlier
+        # edges instead of batch-rejecting. Go there if 6.0 still rejects or if the
+        # bad edge visibly warps the map.
+        'RGBD/OptimizeMaxError': '6.0',
         # SECOND GATE (bag diffbot_DetectionRate): 2 of the 30 rejected closures
         # actually PASSED the visual stage (>=12 inliers) and reached ICP
         # refinement, then died on libpointmatcher "limit out of bounds":
