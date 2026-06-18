@@ -300,25 +300,27 @@ def generate_launch_description():
         # 6/20, so 12 lets marginal-but-real closures through (still well above
         # noise). Raise back toward 20 if false closures appear.
         'Vis/MinInliers': '12',
-        # FEATURE TYPE: GFTT/ORB (8) instead of the default GFTT/BRIEF (6).
-        # Across every run loop closures die at the 3D verification gate
-        # ("Not enough inliers 0/12 (matches=41)") -- plenty of 2D matches, ~0
-        # geometric inliers. BRIEF is NOT rotation-invariant, so on a revisit from
-        # a different heading the descriptors mismatch, leaving few CORRECT
-        # correspondences for PnP RANSAC. ORB (Oriented FAST + Rotated BRIEF) IS
-        # rotation-invariant -> better cross-viewpoint matches -> more chance of a
-        # consistent inlier set. Set on BOTH the loop-closure-DETECTION vocabulary
-        # (Kp/DetectorStrategy) and the visual REGISTRATION/PnP (Vis/FeatureType)
-        # so the whole pipeline is consistent. ORB is binary like BRIEF (same cheap
-        # Hamming matching) and always built -- no CPU/availability risk, unlike
-        # SIFT. CAVEAT: the keypoint DETECTOR stays GFTT (corners) in 8 -- only the
-        # descriptor changes. If the real cause is noisy DEPTH at corner keypoints
-        # (corners sit on depth-discontinuity edges), inliers may still not climb;
-        # the next lever is then SIFT (=1, a blob detector that avoids edges) or
-        # pure ORB (=2). VALIDATION GATE: watch for "Added loop closure" / inliers
-        # climbing past 12 on revisits.
-        'Kp/DetectorStrategy': '8',
-        'Vis/FeatureType': '8',
+        # FEATURE TYPE: SIFT (1). History: default GFTT/BRIEF (6) gave a flat wall of
+        # "0/12 inliers"; GFTT/ORB (8) broke that on GOOD-DEPTH views (bag
+        # diffbot_gftt_orb hit 10/12 + 7/12, 18 closures reached the optimizer) BUT
+        # most views still return 0 inliers (bags diffbot_orb_optmax6 / _robust: ALL
+        # candidates 0/12 despite 39-77 matches). Root cause = the keypoint DETECTOR:
+        # GFTT (in both 6 and 8) picks CORNERS, which sit on object edges / depth
+        # discontinuities where RealSense stereo depth is noisiest -> the matched
+        # keypoints get valid-but-WRONG 3D -> PnP RANSAC finds no geometric consensus
+        # -> 0 inliers, regardless of descriptor. SIFT uses a DoG BLOB detector that
+        # places keypoints on the interior of textured regions, OFF the depth-edges
+        # -> cleaner 3D at the keypoints -> the 3D verification can actually pass.
+        # Set on BOTH detection vocabulary (Kp/DetectorStrategy) and registration/PnP
+        # (Vis/FeatureType). CAVEATS: (a) SIFT must be in the Jetson's OpenCV build --
+        # VERIFY from the next log that rtabmap initializes SIFT and does NOT fall
+        # back to GFTT/BRIEF or error; if unavailable, revert to ORB (8). (b) SIFT is
+        # heavier than ORB -- WATCH rtabmap delay= (was ~0.18s; if it climbs toward
+        # ~1s, drop Rtabmap/DetectionRate or Kp/MaxFeatures). Robust optimizer stays
+        # (it handles the bad-odom-edge batch-reject once inliers arrive).
+        # VALIDATION GATE: inliers climbing past 12 on revisits + "Added loop closure".
+        'Kp/DetectorStrategy': '1',
+        'Vis/FeatureType': '1',
         # Capture more data WHILE MOVING. rtabmap filters input frames down to
         # this rate (default 1 Hz -> our log showed "Rate=1.00s"), dropping the
         # rest, so this -- NOT camera fps -- is the real "data density" knob. At
