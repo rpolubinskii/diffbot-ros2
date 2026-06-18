@@ -1,4 +1,5 @@
   #!/usr/bin/env zsh
+set -e
 git pull
 colcon build
 source ros2_ws/install/setup.zsh
