@@ -93,7 +93,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("route", help="waypoint YAML file")
     ap.add_argument("--record", metavar="BAGNAME", help="record a bag to BAGNAME during replay")
-    ap.add_argument("--settle", type=float, default=0.0, help="seconds to pause at each goal")
+    ap.add_argument("--settle", type=float, default=3.0,
+                    help="seconds to hold still after EACH SUCCESSFUL goal so "
+                         "icp_odometry/rtabmap settle at rest (mapping + closure quality); "
+                         "0 to disable")
     ap.add_argument("--goal-timeout", type=float, default=120.0, help="per-goal timeout (s)")
     args = ap.parse_args()
 
@@ -117,11 +120,18 @@ def main():
     try:
         for i, wp in enumerate(waypoints):
             print(f"[replay] {i + 1}/{len(waypoints)}: x={wp['x']:.2f} y={wp['y']:.2f} yaw={wp['yaw']:.2f}")
-            if not node.send(float(wp["x"]), float(wp["y"]), float(wp["yaw"]), args.goal_timeout):
+            if node.send(float(wp["x"]), float(wp["y"]), float(wp["yaw"]), args.goal_timeout):
+                # Hold still so the robot settles BEFORE the next move: at rest
+                # icp_odometry stops accumulating motion error, rtabmap gets clean
+                # stationary frames to add/refine the node at this pose and verify
+                # loop closures against, and scan/depth noise stabilizes. The bag is
+                # recording throughout, so these settled frames are captured.
+                if args.settle > 0:
+                    node.get_logger().info(f"settling {args.settle:.1f}s at goal {i + 1}")
+                    time.sleep(args.settle)
+            else:
                 failed += 1
                 # keep going to the return-to-origin waypoint even if one fails
-            if args.settle > 0:
-                time.sleep(args.settle)
     finally:
         node.destroy_node()
         rclpy.shutdown()
