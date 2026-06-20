@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.actions import IncludeLaunchDescription
+from launch.actions import TimerAction, ExecuteProcess
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.event_handlers import OnProcessExit
@@ -224,10 +225,62 @@ def generate_launch_description():
         #    stop poisoning RANSAC), Vis/MinInliers 20->12, RGBD/OptimizeMaxError
         #    3->5. Kept Reg/Strategy=2 as the safest of {0 no closures, 1 corridor
         #    slide, 2 safe-but-currently-inert}.
-        'Reg/Strategy': '2',
-        # Proximity-by-space (default on) now also registers via lidar ICP -- this
-        # closes drift on nearby revisits even when appearance recognition misses.
+        #  - LIDAR-PROXIMITY PIVOT 2026-06-20: visual closure is dead across ALL
+        #    detectors (GFTT/BRIEF, SIFT, GFTT/ORB all landed 0 closures, best
+        #    7-10/12 inliers, never clearing the 12 gate -- bags diffbot_run /
+        #    diffbot_gftt_orb_robust; see diffbot-dev/task-notes/odometry-slam.md).
+        #    VisIcp(2) keeps proximity closures gated on that dead visual
+        #    verification, so switch to Icp(1): proximity/closure now registers via
+        #    LIDAR ICP, heading- and appearance-independent. The prior Icp(1)
+        #    corridor-slide was SINGLE-scan ICP (ProximityPathMaxNeighbors unset=0);
+        #    the fix is merging neighbor scans (below) so the match has corners to
+        #    lock onto instead of sliding the corridor lengthwise.
+        'Reg/Strategy': '1',
+        # Proximity-by-space (default on) now registers via lidar ICP (Reg/Strategy
+        # =1 above) -- closes drift on nearby revisits independent of appearance.
         'RGBD/ProximityBySpace': 'true',
+        # Merge up to 10 neighbor scans into a local map before proximity ICP. This
+        # is the corridor-slide fix: a single 2D scan is under-constrained along a
+        # corridor's long axis (parallel walls align at any offset), but a merged
+        # multi-scan local map carries the corner / cross-wall geometry that pins
+        # the longitudinal position. Without this (unset=0) the prior Reg/Strategy=1
+        # run duplicated a corridor. Tune down if CPU/delay climbs; up if slide
+        # persists.
+        'RGBD/ProximityPathMaxNeighbors': '10',
+        # Proximity attempt #1 (bag diffbot_lidar_proximity) fired ZERO proximity
+        # closures: the default RGBD/ProximityMaxGraphDepth=50 only compares nodes
+        # within 50 graph-links of the latest node, but this route's origin-revisits
+        # are 92-262 links apart -> ALL excluded. 0 = no graph-depth limit, so
+        # proximity-by-space can match spatially-near nodes no matter how far apart
+        # they are in the graph (i.e. the actual revisits). REQUIRED companion:
+        # ProximityOdomGuess=true seeds the proximity ICP with the odometry transform
+        # -- needed for lidar registration, and it also bounds false matches under
+        # drift (with Icp/MaxTranslation=0.5 + the robust optimizer). Ref:
+        # rtabmap_ros#654. WATCH the next map for false closures (a wall/corridor
+        # teleporting); if they appear, this gate is the cause.
+        'RGBD/ProximityMaxGraphDepth': '0',
+        'RGBD/ProximityOdomGuess': 'true',
+        # PROXIMITY RESULT GATE (bag diffbot_proximity_gate, log
+        # diffbot_2026-06-20_134148). Opening the graph-depth + odom-guess above
+        # FINALLY made proximity-by-space FIRE on the origin revisit: it selected
+        # node 1, ran VISUAL registration (>=12 inliers -> non-null transform), and
+        # proposed a correction -- then a SINGLE gate killed it:
+        #   Rtabmap.cpp:2829 "Ignoring local loop closure with 1 because resulting
+        #   transform is too large!? (1.013119m > 1.000000m)".
+        # Verified against rtabmap 0.22.1 source: the 1.0 m threshold is
+        # RGBD/ProximityPathFilteringRadius (default 1.0). It gates the proximity
+        # closure TWICE -- (a) candidate selection by optimized-pose distance
+        # (passed) and (b) the magnitude of the RESULTING registration transform
+        # (line 2781, failed). A proximity closure's transform IS the accumulated
+        # drift it corrects; over this route the origin drift reached ~1.01 m, so
+        # the 1.0 m default rejects EXACTLY the closure we want. NOT clamped lower
+        # by RGBD/MaxLoopClosureDistance (unset=0). Raise to 2.0 m: admits the
+        # observed 1.01 m correction with headroom for a longer loop while still
+        # rejecting a >2 m teleport. The closure is already inlier-verified
+        # (Vis/MinInliers>=12), so widening this is not "accepting garbage" -- it
+        # lets the verified drift correction apply. WATCH the next map for a wall/
+        # corridor snapping far on closure (a false positive); if so, drop to ~1.5.
+        'RGBD/ProximityPathFilteringRadius': '2.0',
         # Keep the graph anchored at its start (do NOT optimize-from-end, which
         # would let the whole map shift under a new closure).
         'RGBD/OptimizeFromGraphEnd': 'false',
@@ -319,8 +372,17 @@ def generate_launch_description():
         # ~1s, drop Rtabmap/DetectionRate or Kp/MaxFeatures). Robust optimizer stays
         # (it handles the bad-odom-edge batch-reject once inliers arrive).
         # VALIDATION GATE: inliers climbing past 12 on revisits + "Added loop closure".
-        'Kp/DetectorStrategy': '1',
-        'Vis/FeatureType': '1',
+        # VALIDATION RESULT 2026-06-20 (bag diffbot_run, 1913 nodes, full route): GATE FAILED.
+        # SIFT loaded fine (no fallback, delay ~0.16s) but landed 0 closures; best 7/12 inliers
+        # over 18 candidates, 17 at 0/12 -- i.e. SIFT ALSO hits the 0-inlier wall, no better
+        # than GFTT/ORB. Hypothesis above (blob detector -> cleaner 3D) is REFUTED: the wall is
+        # not a detector problem. FOLLOW-UP 2026-06-20: before the lidar pivot, retest GFTT/ORB
+        # (8/8) WITH the robust optimizer -- that combo was never run together (GFTT/ORB's 10/12
+        # run predates the robust optimizer), so a landed closure is still plausible. Set to 8/8
+        # for this test; if it ALSO lands 0 closures, pivot to lidar-proximity (the wall is then
+        # confirmed depth/scene, not detector). See diffbot-dev/task-notes/odometry-slam.md.
+        'Kp/DetectorStrategy': '8',
+        'Vis/FeatureType': '8',
         # Capture more data WHILE MOVING. rtabmap filters input frames down to
         # this rate (default 1 Hz -> our log showed "Rate=1.00s"), dropping the
         # rest, so this -- NOT camera fps -- is the real "data density" knob. At
@@ -477,27 +539,79 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            # CORRECT param names: this realsense2_camera build uses
-            # rgb_camera.color_profile / depth_module.depth_profile. The old
-            # 'rgb_camera.profile' / 'depth_module.profile' were SILENTLY IGNORED
-            # ("Parameter ... is not supported" in the log), so across every run
-            # the camera ran at its DEFAULTS -- color 1280x720x30, depth
-            # 848x480x30 -- NOT the 640x360 the config implied. Resolution was
-            # therefore NEVER the visual-loop-closure bottleneck (always 720p).
-            # fps choice (researched): rtabmap drops input frames to satisfy
-            # Rtabmap/DetectionRate (see rtabmap_parameters), so fps above that
-            # rate adds NO map data -- the data-density knob is DetectionRate, not
-            # fps. But higher fps still helps two real things during motion: a
-            # sharper frame is available to SELECT at each detection tick, and the
-            # camera<->lidar approx_sync skew shrinks (~2.5 cm at 30 fps vs ~5 cm
-            # at 15 fps @ 1.6 m/s). The Jetson already ran 720p@30 + depth 30 fine
-            # (rtabmap delay ~0.4 s), so keep BOTH full res and 30 fps -- no
-            # fps/res trade needed. (Odometry is lidar icp_odometry, unaffected by
-            # camera fps; the "fast motion loses tracking" reports are for visual
-            # rgbd_odometry, which is disabled here.)
-            'rgb_camera.color_profile': '1280x720x30',
-            'depth_module.depth_profile': '848x480x30'
+            # Param names: this realsense2_camera build uses
+            # rgb_camera.color_profile / depth_module.depth_profile (the old
+            # 'rgb_camera.profile'/'depth_module.profile' were silently ignored).
+            # RESOLUTION LOWERED 2026-06-20 (720p/848x480 -> 640x360/424x240) to
+            # cut CPU. Once visual loop closure was REFUTED (see task-notes, lidar
+            # proximity is the SLAM unlock now), high camera resolution buys
+            # nothing for SLAM: odometry is lidar icp_odometry, the 2D nav grid is
+            # lidar, and rtabmap closures register via lidar ICP (Reg/Strategy=1).
+            # But the NEW depth point cloud for the STVL collision layer is built
+            # by deprojecting depth per frame, which cost ~1 full Jetson core at
+            # 848x480 (realsense node ~94-110% CPU) -> pushed rtabmap delay 0.18 ->
+            # 0.7 s and made rviz sluggish + the rtabmap depth map thin. Quartering
+            # the pixels (~4x cheaper deprojection) restores headroom while staying
+            # plenty dense for a 0.05 m collision voxel grid at <2.5 m. Bump back up
+            # only if collision needs finer depth AND the CPU budget allows.
+            'rgb_camera.color_profile': '640x360x30',
+            'depth_module.depth_profile': '424x240x30',
+            # ---- DEPTH CLEANUP FOR THE VISUAL COLLISION LAYER (2026-06-20) ----
+            # Goal: a depth point cloud clean enough that an STVL obstacle layer +
+            # collision_monitor don't fire on RealSense flying-pixels / "shading".
+            #   pointcloud.enable -> publish /camera/camera/depth/color/points, the
+            #     LIVE per-frame cloud STVL consumes. Deliberately fed to collision
+            #     DIRECTLY (not rtabmap's /cloud_obstacles) so collision does NOT
+            #     depend on the rtabmap SLAM node (which can crash; see task-notes).
+            #   spatial_filter -> cheap resolution-preserving edge-preserving denoise.
+            # IMPORTANT -- this depth stream is SHARED with rtabmap. Two filters were
+            # tried and REMOVED 2026-06-20 because they regressed SLAM / load:
+            #   * clip_distance=3.0 -> clipped the SHARED depth so rtabmap could not
+            #     map past 3 m: /mapData + /grid_prob_map went to thin sparse patches.
+            #     Collision range is bounded by STVL itself (obstacle_range=2.5,
+            #     max_z) so the camera-level clip is unnecessary -> REMOVED.
+            #   * temporal_filter -> ~30 fps full-frame CPU cost (helped make rviz/
+            #     topics sluggish + starved rtabmap of frames) and it ghosts depth
+            #     during motion (stale obstacles) -> REMOVED. STVL voxel_min_points +
+            #     decay do the transient-noise rejection downstream instead.
+            # Also NOT enabled: decimation_filter (halves depth res -> risks the
+            # aligned-depth/camera_info path rtabmap needs) and hole_filling
+            # (fabricates depth -> phantom obstacles). If the Jetson is still loaded,
+            # next lever is decimating only the CLOUD via pointcloud__neon_.
+            # filter_magnitude (does NOT touch rtabmap's depth image) in the timer.
+            'pointcloud.enable': 'true',
+            'spatial_filter.enable': 'true'
+            # accelerate_gpu_with_glsl was TESTED 2026-06-20 and REJECTED. It works
+            # (camera healthy, no GL errors) and halves CPU at 848x480 (94% -> 52%),
+            # BUT it does NOT help the metric that matters for collision -- cloud
+            # RATE: 848x480 ran 1.2 Hz with GPU (vs 11.5 Hz at 424x240), too slow
+            # for a collision cloud (robot moves ~0.25 m between updates and STVL
+            # decay barely refreshes). At the 424x240 res we keep FOR that rate, GPU
+            # accel is marginal (47% vs 53% CPU) and adds a GL-context dependency to
+            # the camera that everything depends on. Not worth the risk -> left off.
         }.items(),
+    )
+
+    # realsense2_camera ARM/NEON quirk: the point-cloud filter is instantiated as
+    # "pointcloud__neon_", and the standard 'pointcloud.enable' launch arg does NOT
+    # wire to it (verified: pointcloud__neon_.enable stayed False, no cloud, 0
+    # publishers on /camera/camera/depth/color/points). rs_launch.py won't forward
+    # the undeclared 'pointcloud__neon_.enable' arg either. So enable the NEON
+    # filter at RUNTIME after the camera is up.
+    # A FIXED-delay one-shot param set is fragile: camera init time varies, and a
+    # 20 s timer FAILED on a slow boot ("process has died, exit code 1" -> no cloud
+    # -> STVL had nothing to mark). So RETRY: start at 12 s, then `ros2 param set`
+    # every 2 s until it succeeds (camera param ready), up to ~80 s. Idempotent.
+    enable_pointcloud_neon = TimerAction(
+        period=12.0,
+        actions=[ExecuteProcess(
+            cmd=['bash', '-c',
+                 'for i in $(seq 1 40); do '
+                 'ros2 param set /camera/camera pointcloud__neon_.enable true '
+                 '&& echo "[pointcloud-enable] cloud enabled (attempt $i)" && exit 0; '
+                 'sleep 2; done; '
+                 'echo "[pointcloud-enable] FAILED after 40 attempts"; exit 1'],
+            output='screen')],
     )
 
     imu_filter = Node(
@@ -669,6 +783,7 @@ def generate_launch_description():
         delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
         depth_module,
         realsense,
+        enable_pointcloud_neon,
         imu_filter,
         imu_transform,
         external_imu_filter,

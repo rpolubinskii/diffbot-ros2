@@ -10,8 +10,8 @@
 #      relaunch with NO rebuild step that can go stale (C++ still recompiles).
 #   2. Kills any running stack FIRST (releases /dev/rplidar, motor, imu) and waits
 #      for the devices to free.
-#   3. Relaunches in the background, logging to a timestamped file (the same format
-#      analyze_slam.py / the bag log readers expect).
+#   3. Relaunches in the background, logging to a timestamped file (the same
+#      timestamped-log format the bag log readers expect).
 #   4. VERIFIES by echoing the rtabmap parameters that actually loaded, so the
 #      agent can confirm its change took (catches the SIFT-type slip immediately).
 #
@@ -43,18 +43,13 @@ echo "[redeploy] colcon build --symlink-install --packages-select diffbot"
 cd "${WS}"
 colcon build --symlink-install --packages-select diffbot
 
-# 2. kill any running stack and wait for hardware to release
-if pgrep -f "${LAUNCH_MATCH}" >/dev/null 2>&1; then
-  echo "[redeploy] stopping running stack..."
-  pkill -f "${LAUNCH_MATCH}" || true
-  # give nodes time to close serial devices cleanly
-  for i in {1..10}; do
-    pgrep -f "${LAUNCH_MATCH}" >/dev/null 2>&1 || break
-    sleep 1
-  done
-  pkill -9 -f "${LAUNCH_MATCH}" 2>/dev/null || true
-  sleep 3
-fi
+# 2. stop any running stack CLEANLY via agent_stop.zsh, which SIGINTs the launch
+#    AND sweeps orphaned child node processes. A plain pkill on the launch match
+#    leaves child nodes (rplidar_node, bt_navigator, camera, imu, ...) orphaned in
+#    their own process groups, holding /dev/rplidar/motor/imu and corrupting the
+#    relaunch (e.g. two rplidar_nodes contending for one serial port).
+echo "[redeploy] stopping any running stack (agent_stop.zsh)..."
+"${REPO_ROOT}/agent_stop.zsh"
 
 # 3. relaunch in the background, tee'd to a timestamped log
 echo "[redeploy] launching -> ${LOG}"
@@ -68,7 +63,7 @@ sleep "${VERIFY_WAIT}"
 
 # 4. verify: which rtabmap params actually loaded?
 echo "[redeploy] ===== loaded rtabmap params (VERIFY your change took effect) ====="
-grep -E 'Setting RTAB-Map parameter "(Kp/DetectorStrategy|Vis/FeatureType|Optimizer/Robust|Optimizer/Strategy|RGBD/OptimizeMaxError|Rtabmap/DetectionRate)"' "${LOG}" \
+grep -E 'Setting RTAB-Map parameter "(Kp/DetectorStrategy|Vis/FeatureType|Optimizer/Robust|Optimizer/Strategy|RGBD/OptimizeMaxError|RGBD/ProximityMaxGraphDepth|RGBD/ProximityOdomGuess|RGBD/ProximityPathFilteringRadius|Rtabmap/DetectionRate)"' "${LOG}" \
   || echo "[redeploy] (no rtabmap param lines yet -- increase VERIFY_WAIT or check ${LOG})"
 echo "[redeploy] ====================================================================="
 echo "[redeploy] stack running (pid ${LAUNCH_PID}); log: ${LOG}"
