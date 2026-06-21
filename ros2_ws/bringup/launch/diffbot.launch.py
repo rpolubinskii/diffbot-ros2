@@ -18,14 +18,12 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.actions import IncludeLaunchDescription
-from launch.actions import TimerAction
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
-from launch_ros.actions import Node
 from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 
@@ -159,6 +157,13 @@ def generate_launch_description():
             FindPackageShare("diffbot"),
             "config",
             "external_imu_filter.yaml",
+        ]
+    )
+    realsense_params = PathJoinSubstitution(
+        [
+            FindPackageShare("diffbot"),
+            "config",
+            "realsense_params.yaml",
         ]
     )
 
@@ -576,11 +581,13 @@ def generate_launch_description():
             #     decay do the transient-noise rejection downstream instead.
             # Also NOT enabled: decimation_filter (halves depth res -> risks the
             # aligned-depth/camera_info path rtabmap needs) and hole_filling
-            # (fabricates depth -> phantom obstacles). If the Jetson is still loaded,
-            # next lever is decimating only the CLOUD via pointcloud__neon_.
-            # filter_magnitude (does NOT touch rtabmap's depth image) in the timer.
-            'pointcloud.enable': 'true',
-            'spatial_filter.enable': 'true'
+            # (fabricates depth -> phantom obstacles).
+            # On this ARM/NEON build the actual filter instance is exposed as
+            # pointcloud__neon_; realsense_params.yaml enables that launch-time
+            # node parameter. Do not rely on the standard pointcloud.enable key:
+            # the live /camera/camera node does not declare it on this build.
+            'spatial_filter.enable': 'true',
+            'config_file': realsense_params
             # accelerate_gpu_with_glsl was TESTED 2026-06-20 and REJECTED. It works
             # (camera healthy, no GL errors) and halves CPU at 848x480 (94% -> 52%),
             # BUT it does NOT help the metric that matters for collision -- cloud
@@ -590,27 +597,6 @@ def generate_launch_description():
             # accel is marginal (47% vs 53% CPU) and adds a GL-context dependency to
             # the camera that everything depends on. Not worth the risk -> left off.
         }.items(),
-    )
-
-    # realsense2_camera ARM/NEON quirk: the point-cloud filter is instantiated as
-    # "pointcloud__neon_", and the standard 'pointcloud.enable' launch arg does NOT
-    # wire to it (verified: pointcloud__neon_.enable stayed False, no cloud, 0
-    # publishers on /camera/camera/depth/color/points). rs_launch.py won't forward
-    # the undeclared 'pointcloud__neon_.enable' arg either. So enable the NEON
-    # filter at RUNTIME after the camera is up.
-    # A FIXED-delay one-shot param set is fragile: camera init time varies, and a
-    # 20 s timer FAILED on a slow boot ("process has died, exit code 1" -> no cloud
-    # -> STVL had nothing to mark). A shell loop around `ros2 param set` also failed
-    # under load with a ros2cli/rclpy daemon fault (`!rclpy.ok()`). Use a small
-    # rclpy helper instead: it talks directly to the camera parameter service, retries
-    # cleanly, and exits after the parameter is set. Idempotent.
-    enable_pointcloud_neon = TimerAction(
-        period=12.0,
-        actions=[Node(
-            package='diffbot',
-            executable='enable_camera_pointcloud',
-            name='enable_camera_pointcloud',
-            output='screen')],
     )
 
     imu_filter = Node(
@@ -782,7 +768,6 @@ def generate_launch_description():
         delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
         depth_module,
         realsense,
-        enable_pointcloud_neon,
         imu_filter,
         imu_transform,
         external_imu_filter,
