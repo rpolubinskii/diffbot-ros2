@@ -500,7 +500,7 @@ private:
   sensor_msgs::msg::LaserScan last_scan_;
 };
 
-}  // namespace diffbot
+}
 
 int main(int argc, char ** argv)
 {

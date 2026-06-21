@@ -78,7 +78,6 @@ namespace diffbot {
             }
         };
 
-        // Regime-specific angular feedforward LUTs from arc/spin calibration.
         constexpr std::array<std::pair<double, int>, 7> kLeftFwdArcVelPwmLut = {
             {
                 {3.970032, 350},
@@ -271,7 +270,7 @@ namespace diffbot {
             value = parsed;
             return true;
         }
-    } // namespace
+    }
 
     hardware_interface::CallbackReturn DiffBotSystemHardware::on_init(
         const hardware_interface::HardwareInfo &info
@@ -938,13 +937,6 @@ namespace diffbot {
             if (debug_pub_counter_ >= debug_pub_decimation_) {
                 debug_pub_counter_ = 0;
                 std_msgs::msg::Float64MultiArray msg;
-                // 0 left_cmd_rad_s, 1 right_cmd_rad_s, 2 left_meas_rad_s, 3 right_meas_rad_s,
-                // 4 left_ff_pwm, 5 right_ff_pwm, 6 left_pid_corr_pwm, 7 right_pid_corr_pwm,
-                // 8 left_out_pwm, 9 right_out_pwm,
-                // 10 regime_id (0 straight, 1 arc, 2 spin), 11 abs(cmd_left-cmd_right),
-                // 12 serial lines, 13 parse rejects, 14 encoder samples,
-                // 15 IMU samples, 16 mag samples, 17 last serial field count.
-                // For linear mapper without PID: ff == out, pid_corr == 0
                 msg.data = {
                     cmd_left, cmd_right,
                     hw_velocities_[0], hw_velocities_[1],
@@ -964,7 +956,7 @@ namespace diffbot {
             }
         }
     }
-} // namespace diffbot
+}
 
 PLUGINLIB_EXPORT_CLASS(
     diffbot::DiffBotSystemHardware,

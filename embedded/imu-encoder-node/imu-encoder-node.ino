@@ -2,12 +2,11 @@
 #include <Wire.h>
 #include <ICM_20948.h>
 
-// I2C pins for ESP8266 (NodeMCU). D1/D2/D5/D6 are already used, so we use:
-// SDA -> D7 (GPIO13), SCL -> D4 (GPIO2)
+// D1/D2/D5/D6 are already used.
 constexpr uint8_t I2C_SDA_PIN = D7;
 constexpr uint8_t I2C_SCL_PIN = D4;
 
-// AD0 low selects address 0x68. This matches the previous manual driver.
+// AD0 low selects 0x68.
 constexpr bool kImuAd0High = false;
 constexpr uint32_t kPublishPeriodMs = 10;
 constexpr uint32_t kMinEncoderPulseUs = 200;
@@ -37,7 +36,7 @@ ICM_20948_I2C imu;
 static GyroBias gyroBias = {0.0f, 0.0f, 0.0f};
 static bool imuConfigured = false;
 
-// Encoder pins (ESP8266 GPIO numbers).
+// ESP8266 GPIO numbers.
 const byte encoderLPinA = 5;
 const byte encoderLPinB = 4;
 const byte encoderRPinA = 14;
@@ -215,7 +214,6 @@ void loop() {
     return;
   }
 
-  // Output format (single line):
   // left_ticks,right_ticks,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps,mx_uT,my_uT,mz_uT
   Serial.print(l);
   Serial.print(',');

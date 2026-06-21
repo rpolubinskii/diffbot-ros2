@@ -5,8 +5,8 @@ amcl:
     odom_frame_id: odom
     scan_topic: scan
     map_topic: map
-    use_map_topic: true  # Listen to /map topic from SLAM
-    first_map_only: false  # Allow map updates from SLAM
+    use_map_topic: true
+    first_map_only: false
 
 bt_navigator:
   ros__parameters:
@@ -22,14 +22,6 @@ bt_navigator:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
       plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
-    # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
-    # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
-    # nav2_bt_navigator/navigate_through_poses_w_replanning_and_recovery.xml
-    # They can be set here or via a RewrittenYaml remap from a parent launch file to Nav2.
-
-    # plugin_lib_names is used to add custom BT plugins to the executor (vector of strings).
-    # Built-in plugins are added automatically
-    # plugin_lib_names: []
 
     error_code_names:
       - compute_path_error_code
@@ -45,23 +37,15 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
+    goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
     use_realtime_priority: false
-    # Humble default is Twist (unstamped); set explicitly for clarity.
     enable_stamped_cmd_vel: false
 
-    # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
-    # Goal checker parameters
-    #precise_goal_checker:
-    #  plugin: "nav2_controller::SimpleGoalChecker"
-    #  xy_goal_tolerance: 0.25
-    #  yaw_goal_tolerance: 0.25
-    #  stateful: true
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -153,10 +137,6 @@ controller_server:
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
         mode: 0
-      # TwirlingCritic:
-      #   enabled: true
-      #   twirling_cost_power: 1
-      #   twirling_cost_weight: 10.0
 
 local_costmap:
   local_costmap:
@@ -169,19 +149,15 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.1
-      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"  # ~0.32 m box: real body+wheels (~0.25 m) plus clearance margin (replaces the robot_radius 0.20 circle); inscribed ~0.16 m so the planner enters ~0.32 m gaps. +0.01 default footprint_padding. See task-notes/depth-collision.md.
+      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"
       plugins: ["voxel_layer", "stvl_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.40   # local: MPPI driving cushion (~0.20 m beyond the 0.20 inscribed ring)
+        inflation_radius: 0.40
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
-        # publish_voxel_map disabled: it published /local_costmap/voxel_grid as
-        # nav2_msgs/VoxelGrid, colliding (same topic, incompatible type) with
-        # STVL's PointCloud2 /local_costmap/voxel_grid -> local costmap failed to
-        # configure -> nav bringup aborted. STVL owns that viz topic now.
         publish_voxel_map: false
         origin_z: 0.0
         z_resolution: 0.1
@@ -199,22 +175,11 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      # Depth-camera 3D obstacle layer (2026-06-20) -- catches what the 2D lidar
-      # plane misses (table tops, chair seats, overhangs). STVL is used instead of
-      # a plain voxel_layer because RealSense depth is noisy: STVL rejects the
-      # flying-pixel speckle three ways -- (1) voxel_min_points: a voxel must get
-      # >=N points in one cloud to mark, so isolated edge speckle never marks;
-      # (2) voxel_decay: marks fade in voxel_decay seconds unless re-observed, so a
-      # one-frame flying pixel clears almost immediately while a real obstacle is
-      # continuously re-marked; (3) height clip drops floor/ceiling. Source is the
-      # RealSense cloud DIRECTLY (not rtabmap /cloud_obstacles) so this does not
-      # depend on the SLAM node. Tune voxel_min_points UP / voxel_decay DOWN if it
-      # still trips on noise; DOWN / UP if real obstacles are missed.
       stvl_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 1.0            # s; how long a voxel persists unobserved (linear)
-        decay_model: 0             # 0=linear, 1=exponential, 2=persistent
+        voxel_decay: 1.0
+        decay_model: 0
         voxel_size: 0.05
         track_unknown_space: true
         unknown_threshold: 15
@@ -222,7 +187,7 @@ local_costmap:
         update_footprint_enabled: true
         combination_method: 1
         origin_z: 0.0
-        publish_voxel_map: true     # /local_costmap/stvl_layer/voxel_grid for rviz
+        publish_voxel_map: true
         transform_tolerance: 0.3
         mapping_mode: false
         map_save_duration: 60.0
@@ -233,20 +198,20 @@ local_costmap:
           marking: true
           clearing: true
           obstacle_range: 2.5
-          min_obstacle_height: 0.08   # drop the floor
-          max_obstacle_height: 1.6    # drop ceiling / overhead
+          min_obstacle_height: 0.08
+          max_obstacle_height: 1.6
           expected_update_rate: 0.0
           observation_persistence: 0.0
           inf_is_valid: false
-          filter: "voxel"             # voxel-downsample the input
-          voxel_min_points: 6         # KEY noise gate: >=6 pts/voxel to mark
+          filter: "voxel"
+          voxel_min_points: 6
           clear_after_reading: true
           max_z: 2.0
           min_z: 0.1
-          vertical_fov_angle: 1.012   # D435 depth vFOV ~58 deg
-          horizontal_fov_angle: 1.518 # D435 depth hFOV ~87 deg
+          vertical_fov_angle: 1.012
+          horizontal_fov_angle: 1.518
           decay_acceleration: 5.0
-          model_type: 0               # 0=depth camera frustum clearing
+          model_type: 0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -259,7 +224,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
-      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"  # ~0.32 m box: real body+wheels (~0.25 m) plus clearance margin (replaces the robot_radius 0.20 circle); inscribed ~0.16 m so the planner enters ~0.32 m gaps. +0.01 default footprint_padding. See task-notes/depth-collision.md.
+      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"
       resolution: 0.1
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "stvl_layer", "inflation_layer"]
@@ -277,31 +242,11 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      # Step 3 (2026-06-21): depth obstacle evidence in the GLOBAL costmap so NavFn
-      # routes AROUND depth-only obstacles (table tops, chair seats, overhangs)
-      # instead of planning straight through them and trapping MPPI in a local
-      # pocket. The Step 2 drive showed 6x MPPI "optimizer fail"/recovery precisely
-      # because the global plan was depth-blind. Mirrors the local stvl_layer (same
-      # noise rejection: voxel_min_points + frustum clearing) but with a LONGER
-      # voxel_decay so a mark survives across a leg while the 1 Hz global planner
-      # repeatedly replans around it. Source = the RealSense cloud DIRECTLY (not
-      # rtabmap) so the global layer does not depend on the SLAM node.
-      # CONSERVATIVE clearing: the frustum model clears voxels seen free in the
-      # current camera FOV immediately; voxel_decay only bounds the lifetime of
-      # marks left OUTSIDE the FOV, so transient/stale depth cruft self-clears
-      # within a leg and never becomes a permanent phantom wall in the map frame.
-      # Tuning: if real obstacles under-mark, lower voxel_min_points toward 2-3; if
-      # stale cruft blocks global paths, lower voxel_decay or raise voxel_min_points.
       stvl_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 90.0           # s; long global obstacle MEMORY so a mark persists while out of
-                                    # camera FOV -> NavFn commits to one route instead of flip-flopping
-                                    # between two as marks decay/re-appear (route-livelock fix, see
-                                    # "Global depth oscillation" in task-notes). local stays 1.0.
-                                    # NOTE: this only forces commitment; route over-blocking (a
-                                    # passable gap marked lethal) is a separate softening follow-up.
-        decay_model: 0             # 0=linear
+        voxel_decay: 90.0
+        decay_model: 0
         voxel_size: 0.05
         track_unknown_space: true
         unknown_threshold: 15
@@ -309,7 +254,7 @@ global_costmap:
         update_footprint_enabled: true
         combination_method: 1
         origin_z: 0.0
-        publish_voxel_map: true     # /global_costmap/voxel_grid for rviz
+        publish_voxel_map: true
         transform_tolerance: 0.3
         mapping_mode: false
         map_save_duration: 60.0
@@ -320,27 +265,27 @@ global_costmap:
           marking: true
           clearing: true
           obstacle_range: 2.5
-          min_obstacle_height: 0.08   # drop the floor
-          max_obstacle_height: 1.6    # drop ceiling / overhead
+          min_obstacle_height: 0.08
+          max_obstacle_height: 1.6
           expected_update_rate: 0.0
           observation_persistence: 0.0
           inf_is_valid: false
-          filter: "voxel"             # voxel-downsample the input
-          voxel_min_points: 6         # noise gate: >=6 pts/voxel to mark
+          filter: "voxel"
+          voxel_min_points: 6
           clear_after_reading: true
           max_z: 2.0
           min_z: 0.1
-          vertical_fov_angle: 1.012   # D435 depth vFOV ~58 deg
-          horizontal_fov_angle: 1.518 # D435 depth hFOV ~87 deg
+          vertical_fov_angle: 1.012
+          horizontal_fov_angle: 1.518
           decay_acceleration: 5.0
-          model_type: 0               # 0=depth camera frustum clearing
+          model_type: 0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.22   # global: just above the 0.20 inscribed floor; pure route biasing
+        inflation_radius: 0.22
       always_send_full_costmap: true
 
 planner_server:
@@ -404,10 +349,6 @@ waypoint_follower:
 
 route_server:
   ros__parameters:
-    # The graph_filepath does not need to be specified since it going to be set by defaults in launch.
-    # If you'd rather set it in the yaml, remove the default "graph" value in the launch file(s).
-    # file & provide full path to map below. If graph config or launch default is provided, it is used
-    # graph_filepath: $(find-pkg-share nav2_route)/graphs/aws_graph.geojson
     boundary_radius_to_achieve_node: 1.0
     radius_to_achieve_node: 2.0
     smooth_corners: true
@@ -431,28 +372,23 @@ smoother_server:
 
     SmoothPath:
       plugin: "nav2_constrained_smoother/ConstrainedSmoother"
-      reversing_enabled: true       # whether to detect forward/reverse direction and cusps. Should be set to false for paths without orientations assigned
-      path_downsampling_factor: 3   # every n-th node of the path is taken. Useful for speed-up
-      path_upsampling_factor: 1     # 0 - path remains downsampled, 1 - path is upsampled back to original granularity using cubic bezier, 2... - more upsampling
-      keep_start_orientation: true  # whether to prevent the start orientation from being smoothed
-      keep_goal_orientation: true   # whether to prevent the gpal orientation from being smoothed
-      minimum_turning_radius: 0.0  # minimum turning radius the robot can perform. Can be set to 0.0 (or w_curve can be set to 0.0 with the same effect) for diff-drive/holonomic robots
-      w_curve: 30.0                 # weight to enforce minimum_turning_radius
-      w_dist: 0.0                   # weight to bind path to original as optional replacement for cost weight
-      w_smooth: 2000000.0           # weight to maximize smoothness of path
-      w_cost: 0.015                 # weight to steer robot away from collision and cost
+      reversing_enabled: true
+      path_downsampling_factor: 3
+      path_upsampling_factor: 1
+      keep_start_orientation: true
+      keep_goal_orientation: true
+      minimum_turning_radius: 0.0
+      w_curve: 30.0
+      w_dist: 0.0
+      w_smooth: 2000000.0
+      w_cost: 0.015
 
-      # Parameters used to improve obstacle avoidance near cusps (forward/reverse movement changes)
-      w_cost_cusp_multiplier: 3.0   # option to use higher weight during forward/reverse direction change which is often accompanied with dangerous rotations
-      cusp_zone_length: 2.5         # length of the section around cusp in which nodes use w_cost_cusp_multiplier (w_cost rises gradually inside the zone towards the cusp point, whose costmap weight eqals w_cost*w_cost_cusp_multiplier)
-
-      # Points in robot frame to grab costmap values from. Format: [x1, y1, weight1, x2, y2, weight2, ...]
-      # IMPORTANT: Requires much higher number of iterations to actually improve the path. Uncomment only if you really need it (highly elongated/asymmetric robots)
-      # cost_check_points: [-0.185, 0.0, 1.0]
+      w_cost_cusp_multiplier: 3.0
+      cusp_zone_length: 2.5
 
       optimizer:
-        max_iterations: 70            # max iterations of smoother
-        debug_optimizer: false        # print debug info
+        max_iterations: 70
+        debug_optimizer: false
         gradient_tol: 5e3
         fn_tol: 1.0e-15
         param_tol: 1.0e-20
@@ -461,7 +397,6 @@ velocity_smoother:
   ros__parameters:
     smoothing_frequency: 20.0
     scale_velocities: false
-    # TODO: Try "CLOSED_LOOP" when PID implemented
     feedback: "OPEN_LOOP"
     max_velocity: [0.75, 0.0, 0.96]
     min_velocity: [-0.75, 0.0, -0.96]
@@ -474,11 +409,3 @@ velocity_smoother:
     use_realtime_priority: false
     enable_stamped_cmd_vel: false
     stamp_smoothed_velocity_with_smoothing_time: false
-
-# collision_monitor was removed (2026-06-21). Depth-camera obstacle avoidance now
-# flows entirely through the STVL layer in local_costmap (-> MPPI CostCritic +
-# inflation) rather than a command-level velocity monitor. Stop/slowdown/approach
-# monitor actions were all tested and rejected (paralysis on stop, motor stalls on
-# slowdown/approach) -- see task-notes/depth-collision.md. The node also used to
-# bridge velocity_smoother -> diffbot_base_controller/cmd_vel_unstamped; that remap
-# now lives on velocity_smoother itself in navigation_launch.py.

@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""Replay a recorded return-to-origin nav route as NavigateToPose goals.
-
-The robot's map init is deterministic (rtabmap launches with -d, wiping the db)
-and the physical start pose is fixed, so a map-frame goal sequence captured from
-a vetted run reproduces the same safe trajectory -- giving REPEATABLE SLAM tests
-without manual driving. Run this right after the stack comes up (fresh map).
-
-Usage (on the Jetson, stack already running):
-    python3 nav_replay.py route.yaml
-    python3 nav_replay.py route.yaml --record diffbot_test     # also record a bag
-    python3 nav_replay.py route.yaml --settle 3.0              # pause at each goal
-
-route.yaml format:
-    frame_id: map            # optional, default "map"
-    waypoints:
-      - {x: 1.2, y: 0.0, yaw: 0.0}
-      - {x: 1.2, y: 1.4, yaw: 1.57}
-      - {x: 0.0, y: 0.0, yaw: 0.0}   # last one returns to origin
-
-The waypoint file is the shared contract with the recorder (nav_record.py) and
-the agent: the agent can also just write this YAML directly from the goals it sends.
-"""
+"""Replay a waypoint YAML as NavigateToPose goals."""
 import argparse
 import math
 import signal
@@ -36,8 +15,7 @@ from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-# Same lightweight topic set we record for SLAM analysis (NO camera image topics --
-# recording those starves the rtabmap pipeline on this Jetson).
+# Avoid camera image topics; they starve RTAB-Map on this Jetson.
 RECORD_TOPICS = [
     "/tf", "/tf_static", "/scan", "/odom", "/diffbot_base_controller/odom",
     "/dynamic_joint_states", "/imu/data_body", "/imu/data_raw", "/imu/mag",
@@ -112,7 +90,7 @@ def main():
     if args.record:
         print(f"[replay] recording bag -> {args.record}")
         bag_proc = subprocess.Popen(["ros2", "bag", "record", "-o", args.record, *RECORD_TOPICS])
-        time.sleep(2.0)  # let the recorder subscribe before we move
+        time.sleep(2.0)
 
     rclpy.init()
     node = RouteReplayer(frame_id)
@@ -121,23 +99,17 @@ def main():
         for i, wp in enumerate(waypoints):
             print(f"[replay] {i + 1}/{len(waypoints)}: x={wp['x']:.2f} y={wp['y']:.2f} yaw={wp['yaw']:.2f}")
             if node.send(float(wp["x"]), float(wp["y"]), float(wp["yaw"]), args.goal_timeout):
-                # Hold still so the robot settles BEFORE the next move: at rest
-                # icp_odometry stops accumulating motion error, rtabmap gets clean
-                # stationary frames to add/refine the node at this pose and verify
-                # loop closures against, and scan/depth noise stabilizes. The bag is
-                # recording throughout, so these settled frames are captured.
                 if args.settle > 0:
                     node.get_logger().info(f"settling {args.settle:.1f}s at goal {i + 1}")
                     time.sleep(args.settle)
             else:
                 failed += 1
-                # keep going to the return-to-origin waypoint even if one fails
     finally:
         node.destroy_node()
         rclpy.shutdown()
         if bag_proc is not None:
             print("[replay] stopping bag recorder")
-            bag_proc.send_signal(signal.SIGINT)  # let rosbag2 finalize the db cleanly
+            bag_proc.send_signal(signal.SIGINT)
             try:
                 bag_proc.wait(timeout=15)
             except subprocess.TimeoutExpired:

@@ -119,12 +119,9 @@ namespace diffbot {
         double pid_prev_error_[2] = {0.0, 0.0};
         bool pid_prev_error_valid_[2] = {false, false};
 
-        // limit PID correction contribution in PWM units
         double pid_output_limit_pwm_ = 300.0;
-        // limit integral term (in error*sec units)
         double pid_integral_limit_ = 50.0;
 
-        // store last PID correction for debug telemetry slots 6/7
         double last_pid_corr_pwm_[2] = {0.0, 0.0};
 
         double hw_positions_[2] = {};
@@ -181,6 +178,6 @@ namespace diffbot {
 
         MotionRegime select_motion_regime(double cmd_left, double cmd_right, double *cmd_abs_delta_out) const;
     };
-} // namespace diffbot
+}
 
-#endif  // DIFFBOT__DIFFBOT_SYSTEM_HPP_
+#endif

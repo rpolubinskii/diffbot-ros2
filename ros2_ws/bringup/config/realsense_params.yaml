@@ -1,6 +1,1 @@
-# This Jetson ARM build exposes the RealSense pointcloud filter as
-# pointcloud__neon_ instead of the standard launch-level pointcloud key.
-# rs_launch.py passes config_file values directly to realsense2_camera_node, so
-# this enables the real node parameter at construction time without a post-launch
-# parameter setter.
 pointcloud__neon_.enable: true

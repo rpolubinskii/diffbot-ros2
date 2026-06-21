@@ -8,8 +8,8 @@
 
 #define STBY  D8   // GPIO15 (must be LOW at boot!)
 
-const int pwmFreq = 1000;    // ESP8266 PWM frequency (Hz)
-const int pwmRange = 1023;   // ESP8266 PWM range (0-1023)
+const int pwmFreq = 1000;
+const int pwmRange = 1023;
 const int serialBaud = 115200;
 const unsigned long commandTimeoutMs = 300;
 const unsigned long stbyRecoveryPulseMs = 20;
@@ -28,7 +28,6 @@ int clampPwm(int speed);
 void applyMotorCommands(int speedL, int speedR);
 
 void setup() {
-  // Set all pins as outputs
   pinMode(PWMA, OUTPUT);
   pinMode(AIN1, OUTPUT);
   pinMode(AIN2, OUTPUT);
@@ -43,8 +42,8 @@ void setup() {
   setStandby(true);
   stopAllMotors();
 
-  Serial.begin(serialBaud);  // USB communication
-  Serial.setTimeout(10);     // Keep parser responsive
+  Serial.begin(serialBaud);
+  Serial.setTimeout(10);
   lastValidCommandMs = millis();
 }
 
@@ -54,7 +53,6 @@ void loop() {
 }
 
 void setStandby(bool enabled) {
-  // TB6612: STBY HIGH = active, LOW = standby
   digitalWrite(STBY, enabled ? HIGH : LOW);
 }
 
@@ -109,7 +107,6 @@ void handleSerialInput() {
     if (idx < sizeof(line) - 1) {
       line[idx++] = c;
     } else {
-      // Overflow: drop this line and wait for next newline.
       idx = 0;
     }
   }
@@ -132,7 +129,6 @@ void applyMotorCommands(int speedL, int speedR) {
 
 
 void motorA(int speed) {
-  // Control motor A direction and speed
   if (speed > 0) {
     digitalWrite(AIN1, HIGH);
     digitalWrite(AIN2, LOW);
@@ -149,7 +145,6 @@ void motorA(int speed) {
 }
 
 void motorB(int speed) {
-  // Control motor A direction and speed
   if (speed > 0) {
     digitalWrite(BIN1, HIGH);
     digitalWrite(BIN2, LOW);

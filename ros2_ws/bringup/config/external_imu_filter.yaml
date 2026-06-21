@@ -1,18 +1,6 @@
 external_imu_filter:
   ros__parameters:
     stateless: false
-    # Magnetometer fusion DISABLED. The indoor field is badly disturbed: |B|~95 uT
-    # (~2x earth's ~50 uT) and swings 60-117 uT across a run (position-dependent
-    # soft-iron from rebar/motors/appliances), and hard-iron was never calibrated.
-    # With use_mag=true the madgwick filter referenced heading to this bogus
-    # "magnetic north". That was PART of icp_odometry's old constant offset (it
-    # seeded its frame from this IMU's absolute orientation), but not all of it:
-    # the -90 deg imu_link mount + gyro-init zero remain even mag-off. The real
-    # icp fix is wait_imu_to_init=false in diffbot.launch.py; disabling mag here
-    # is justified independently (the field is unusable as a heading reference).
-    # Gyro-only means the filter initializes yaw at an arbitrary 0; that absolute
-    # yaw is therefore NOT a heading reference and must not anchor icp or EKF.
-    # Re-enable only if a reliable, CALIBRATED heading reference becomes available.
     use_mag: false
     publish_tf: false
     reverse_tf: false

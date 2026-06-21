@@ -5,10 +5,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
   add_compile_options(-Wall -Wextra)
 endif()
 
-# set the same behavior for windows as it is on linux
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-# find dependencies
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   action_msgs
   hardware_interface
@@ -26,7 +24,6 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-## COMPILE
 add_library(
   diffbot
   SHARED
@@ -60,10 +57,8 @@ ament_target_dependencies(
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
-# Export hardware plugins
 pluginlib_export_plugin_description_file(hardware_interface diffbot.xml)
 
-# INSTALL
 install(
   DIRECTORY hardware/include/
   DESTINATION include/diffbot
@@ -89,7 +84,6 @@ install(TARGETS diffbot_icp_odom_reweighter
   DESTINATION lib/diffbot
 )
 
-## EXPORTS
 ament_export_targets(export_diffbot HAS_LIBRARY_TARGET)
 ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS})
 ament_package()
