@@ -76,6 +76,10 @@ install(
   DIRECTORY bringup/launch bringup/config
   DESTINATION share/diffbot
 )
+install(PROGRAMS
+  scripts/enable_camera_pointcloud
+  DESTINATION lib/diffbot
+)
 install(TARGETS diffbot
   EXPORT export_diffbot
   ARCHIVE DESTINATION lib

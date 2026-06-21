@@ -28,7 +28,6 @@ def generate_launch_description():
 
     lifecycle_nodes = ['controller_server',
                        'smoother_server',
-                       'collision_monitor',
                        'planner_server',
                        'behavior_server',
                        'bt_navigator',
@@ -43,6 +42,13 @@ def generate_launch_description():
     #              https://github.com/ros2/launch_ros/issues/56
     remappings = [('/tf', 'tf'),
                   ('/tf_static', 'tf_static')]
+
+    # collision_monitor was removed (2026-06-21): depth obstacle avoidance now
+    # flows through the STVL costmap layer + MPPI, not a command-level monitor.
+    # collision_monitor used to bridge velocity_smoother's output (cmd_vel_smoothed)
+    # to the motor command topic, so velocity_smoother now publishes there directly.
+    velocity_smoother_remappings = remappings + [
+        ('cmd_vel_smoothed', 'diffbot_base_controller/cmd_vel_unstamped')]
 
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {
@@ -117,16 +123,6 @@ def generate_launch_description():
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings),
             Node(
-                package='nav2_collision_monitor',
-                executable='collision_monitor',
-                name='collision_monitor',
-                output='screen',
-                respawn=use_respawn,
-                respawn_delay=2.0,
-                parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
-            Node(
                 package='nav2_planner',
                 executable='planner_server',
                 name='planner_server',
@@ -175,7 +171,7 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                remappings=velocity_smoother_remappings),
             Node(
                 package='nav2_lifecycle_manager',
                 executable='lifecycle_manager',
@@ -202,12 +198,6 @@ def generate_launch_description():
                 package='nav2_smoother',
                 plugin='nav2_smoother::SmootherServer',
                 name='smoother_server',
-                parameters=[configured_params],
-                remappings=remappings),
-            ComposableNode(
-                package='nav2_collision_monitor',
-                plugin='nav2_collision_monitor::CollisionMonitor',
-                name='collision_monitor',
                 parameters=[configured_params],
                 remappings=remappings),
             ComposableNode(
@@ -239,7 +229,7 @@ def generate_launch_description():
                 plugin='nav2_velocity_smoother::VelocitySmoother',
                 name='velocity_smoother',
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=velocity_smoother_remappings),
             ComposableNode(
                 package='nav2_lifecycle_manager',
                 plugin='nav2_lifecycle_manager::LifecycleManager',

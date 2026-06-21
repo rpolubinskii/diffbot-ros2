@@ -169,12 +169,12 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.1
-      robot_radius: 0.22
+      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"  # ~0.32 m box: real body+wheels (~0.25 m) plus clearance margin (replaces the robot_radius 0.20 circle); inscribed ~0.16 m so the planner enters ~0.32 m gaps. +0.01 default footprint_padding. See task-notes/depth-collision.md.
       plugins: ["voxel_layer", "stvl_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.70
+        inflation_radius: 0.40   # local: MPPI driving cushion (~0.20 m beyond the 0.20 inscribed ring)
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -259,10 +259,10 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
-      robot_radius: 0.22
+      footprint: "[[0.16, 0.16], [0.16, -0.16], [-0.16, -0.16], [-0.16, 0.16]]"  # ~0.32 m box: real body+wheels (~0.25 m) plus clearance margin (replaces the robot_radius 0.20 circle); inscribed ~0.16 m so the planner enters ~0.32 m gaps. +0.01 default footprint_padding. See task-notes/depth-collision.md.
       resolution: 0.1
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "stvl_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -277,13 +277,70 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
+      # Step 3 (2026-06-21): depth obstacle evidence in the GLOBAL costmap so NavFn
+      # routes AROUND depth-only obstacles (table tops, chair seats, overhangs)
+      # instead of planning straight through them and trapping MPPI in a local
+      # pocket. The Step 2 drive showed 6x MPPI "optimizer fail"/recovery precisely
+      # because the global plan was depth-blind. Mirrors the local stvl_layer (same
+      # noise rejection: voxel_min_points + frustum clearing) but with a LONGER
+      # voxel_decay so a mark survives across a leg while the 1 Hz global planner
+      # repeatedly replans around it. Source = the RealSense cloud DIRECTLY (not
+      # rtabmap) so the global layer does not depend on the SLAM node.
+      # CONSERVATIVE clearing: the frustum model clears voxels seen free in the
+      # current camera FOV immediately; voxel_decay only bounds the lifetime of
+      # marks left OUTSIDE the FOV, so transient/stale depth cruft self-clears
+      # within a leg and never becomes a permanent phantom wall in the map frame.
+      # Tuning: if real obstacles under-mark, lower voxel_min_points toward 2-3; if
+      # stale cruft blocks global paths, lower voxel_decay or raise voxel_min_points.
+      stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        enabled: true
+        voxel_decay: 90.0           # s; long global obstacle MEMORY so a mark persists while out of
+                                    # camera FOV -> NavFn commits to one route instead of flip-flopping
+                                    # between two as marks decay/re-appear (route-livelock fix, see
+                                    # "Global depth oscillation" in task-notes). local stays 1.0.
+                                    # NOTE: this only forces commitment; route over-blocking (a
+                                    # passable gap marked lethal) is a separate softening follow-up.
+        decay_model: 0             # 0=linear
+        voxel_size: 0.05
+        track_unknown_space: true
+        unknown_threshold: 15
+        mark_threshold: 0
+        update_footprint_enabled: true
+        combination_method: 1
+        origin_z: 0.0
+        publish_voxel_map: true     # /global_costmap/voxel_grid for rviz
+        transform_tolerance: 0.3
+        mapping_mode: false
+        map_save_duration: 60.0
+        observation_sources: depth_cam
+        depth_cam:
+          data_type: PointCloud2
+          topic: /camera/camera/depth/color/points
+          marking: true
+          clearing: true
+          obstacle_range: 2.5
+          min_obstacle_height: 0.08   # drop the floor
+          max_obstacle_height: 1.6    # drop ceiling / overhead
+          expected_update_rate: 0.0
+          observation_persistence: 0.0
+          inf_is_valid: false
+          filter: "voxel"             # voxel-downsample the input
+          voxel_min_points: 6         # noise gate: >=6 pts/voxel to mark
+          clear_after_reading: true
+          max_z: 2.0
+          min_z: 0.1
+          vertical_fov_angle: 1.012   # D435 depth vFOV ~58 deg
+          horizontal_fov_angle: 1.518 # D435 depth hFOV ~87 deg
+          decay_acceleration: 5.0
+          model_type: 0               # 0=depth camera frustum clearing
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.7
+        inflation_radius: 0.22   # global: just above the 0.20 inscribed floor; pure route biasing
       always_send_full_costmap: true
 
 planner_server:
@@ -418,23 +475,10 @@ velocity_smoother:
     enable_stamped_cmd_vel: false
     stamp_smoothed_velocity_with_smoothing_time: false
 
-collision_monitor:
-  ros__parameters:
-    enabled: True
-    base_frame_id: "base_footprint"
-    odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_smoothed"
-    cmd_vel_out_topic: "diffbot_base_controller/cmd_vel_unstamped"
-    enable_stamped_cmd_vel: false
-    state_topic: "collision_monitor_state"
-    transform_tolerance: 0.5
-    source_timeout: 5.0
-    base_shift_correction: True
-    stop_pub_timeout: 2.0
-    use_realtime_priority: false
-    observation_sources: ["scan"]
-    scan:
-      source_timeout: 0.2
-      type: "scan"
-      topic: "/scan"
-      enabled: True
+# collision_monitor was removed (2026-06-21). Depth-camera obstacle avoidance now
+# flows entirely through the STVL layer in local_costmap (-> MPPI CostCritic +
+# inflation) rather than a command-level velocity monitor. Stop/slowdown/approach
+# monitor actions were all tested and rejected (paralysis on stop, motor stalls on
+# slowdown/approach) -- see task-notes/depth-collision.md. The node also used to
+# bridge velocity_smoother -> diffbot_base_controller/cmd_vel_unstamped; that remap
+# now lives on velocity_smoother itself in navigation_launch.py.

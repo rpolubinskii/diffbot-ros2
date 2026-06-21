@@ -18,7 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.actions import IncludeLaunchDescription
-from launch.actions import TimerAction, ExecuteProcess
+from launch.actions import TimerAction
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.event_handlers import OnProcessExit
@@ -557,8 +557,8 @@ def generate_launch_description():
             'rgb_camera.color_profile': '640x360x30',
             'depth_module.depth_profile': '424x240x30',
             # ---- DEPTH CLEANUP FOR THE VISUAL COLLISION LAYER (2026-06-20) ----
-            # Goal: a depth point cloud clean enough that an STVL obstacle layer +
-            # collision_monitor don't fire on RealSense flying-pixels / "shading".
+            # Goal: a depth point cloud clean enough that the STVL obstacle layer
+            # doesn't mark on RealSense flying-pixels / "shading".
             #   pointcloud.enable -> publish /camera/camera/depth/color/points, the
             #     LIVE per-frame cloud STVL consumes. Deliberately fed to collision
             #     DIRECTLY (not rtabmap's /cloud_obstacles) so collision does NOT
@@ -600,17 +600,16 @@ def generate_launch_description():
     # filter at RUNTIME after the camera is up.
     # A FIXED-delay one-shot param set is fragile: camera init time varies, and a
     # 20 s timer FAILED on a slow boot ("process has died, exit code 1" -> no cloud
-    # -> STVL had nothing to mark). So RETRY: start at 12 s, then `ros2 param set`
-    # every 2 s until it succeeds (camera param ready), up to ~80 s. Idempotent.
+    # -> STVL had nothing to mark). A shell loop around `ros2 param set` also failed
+    # under load with a ros2cli/rclpy daemon fault (`!rclpy.ok()`). Use a small
+    # rclpy helper instead: it talks directly to the camera parameter service, retries
+    # cleanly, and exits after the parameter is set. Idempotent.
     enable_pointcloud_neon = TimerAction(
         period=12.0,
-        actions=[ExecuteProcess(
-            cmd=['bash', '-c',
-                 'for i in $(seq 1 40); do '
-                 'ros2 param set /camera/camera pointcloud__neon_.enable true '
-                 '&& echo "[pointcloud-enable] cloud enabled (attempt $i)" && exit 0; '
-                 'sleep 2; done; '
-                 'echo "[pointcloud-enable] FAILED after 40 attempts"; exit 1'],
+        actions=[Node(
+            package='diffbot',
+            executable='enable_camera_pointcloud',
+            name='enable_camera_pointcloud',
             output='screen')],
     )
 

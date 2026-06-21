@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Enable the RealSense NEON pointcloud filter without using ros2cli."""
+
+import sys
+import time
+
+import rclpy
+from rcl_interfaces.msg import Parameter as ParameterMsg
+from rcl_interfaces.msg import ParameterType
+from rcl_interfaces.srv import SetParameters
+from rclpy.node import Node
+
+
+CAMERA_NODE = "/camera/camera"
+PARAMETER = "pointcloud__neon_.enable"
+SET_PARAMETERS_SERVICE = f"{CAMERA_NODE}/set_parameters"
+ATTEMPTS = 60
+INTERVAL_SECONDS = 2.0
+
+
+class PointcloudEnabler(Node):
+    def __init__(self):
+        super().__init__("diffbot_enable_camera_pointcloud")
+        self.client = self.create_client(SetParameters, SET_PARAMETERS_SERVICE)
+
+    def _wait_for_parameter_service(self):
+        if self.client.wait_for_service(timeout_sec=2.0):
+            return True
+        self.get_logger().info(
+            f"Waiting for {SET_PARAMETERS_SERVICE} to enable {PARAMETER}"
+        )
+        return False
+
+    def _set_pointcloud_enabled(self):
+        parameter = ParameterMsg()
+        parameter.name = PARAMETER
+        parameter.value.type = ParameterType.PARAMETER_BOOL
+        parameter.value.bool_value = True
+
+        request = SetParameters.Request()
+        request.parameters = [parameter]
+
+        future = self.client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+        if not future.done():
+            return False, "parameter set timed out"
+
+        try:
+            results = future.result()
+        except Exception as exc:
+            return False, str(exc)
+
+        if not results:
+            return False, "empty parameter response"
+
+        result = results.results[0]
+        return result.successful, result.reason
+
+
+def main():
+    rclpy.init()
+    node = PointcloudEnabler()
+
+    try:
+        for attempt in range(1, ATTEMPTS + 1):
+            if node._wait_for_parameter_service():
+                success, reason = node._set_pointcloud_enabled()
+                if success:
+                    node.get_logger().info(
+                        f"Enabled {CAMERA_NODE}:{PARAMETER} on attempt {attempt}"
+                    )
+                    return 0
+
+                node.get_logger().warn(
+                    f"Attempt {attempt}/{ATTEMPTS} failed enabling "
+                    f"{CAMERA_NODE}:{PARAMETER}: {reason}"
+                )
+
+            time.sleep(INTERVAL_SECONDS)
+
+        node.get_logger().error(
+            f"Failed to enable {CAMERA_NODE}:{PARAMETER} after {ATTEMPTS} attempts"
+        )
+        return 1
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
