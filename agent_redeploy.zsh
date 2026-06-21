@@ -8,6 +8,17 @@ WS="${REPO_ROOT}/ros2_ws"
 LAUNCH_MATCH="ros2 launch diffbot diffbot.launch.py"
 VERIFY_WAIT="${VERIFY_WAIT:-18}"
 LOG="${HOME}/diffbot_$(date +%F_%H%M%S).log"
+LAUNCH_ARGS=()
+
+if [[ -n "${RTABMAP_MODE:-}" ]]; then
+  LAUNCH_ARGS+=("rtabmap_mode:=${RTABMAP_MODE}")
+fi
+if [[ -n "${RTABMAP_DATABASE_PATH:-}" ]]; then
+  LAUNCH_ARGS+=("rtabmap_database_path:=${RTABMAP_DATABASE_PATH}")
+fi
+if [[ -n "${RTABMAP_DELETE_DB_ON_START:-}" ]]; then
+  LAUNCH_ARGS+=("rtabmap_delete_db_on_start:=${RTABMAP_DELETE_DB_ON_START}")
+fi
 
 echo "[redeploy] repo=${REPO_ROOT} ws=${WS}"
 
@@ -26,7 +37,8 @@ echo "[redeploy] stopping any running stack (agent_stop.zsh)..."
 echo "[redeploy] launching -> ${LOG}"
 source "${WS}/install/setup.zsh"
 export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity}] [{time}] [{name}]: {message}"
-nohup ros2 launch diffbot diffbot.launch.py >"${LOG}" 2>&1 &
+echo "[redeploy] launch args: ${LAUNCH_ARGS[*]:-(defaults)}"
+nohup ros2 launch diffbot diffbot.launch.py "${LAUNCH_ARGS[@]}" >"${LOG}" 2>&1 &
 LAUNCH_PID=$!
 disown 2>/dev/null || true
 echo "[redeploy] launch pid=${LAUNCH_PID}, waiting ${VERIFY_WAIT}s for params to load..."

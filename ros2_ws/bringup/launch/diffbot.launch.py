@@ -5,7 +5,7 @@ import launch_ros.descriptions
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler
 from launch.actions import IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
@@ -15,6 +15,84 @@ from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
+
+
+LOCALIZATION_MODE = "localization"
+MAPPING_MODE = "mapping"
+TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _launch_bool(value):
+    return str(value).strip().lower() in TRUE_VALUES
+
+
+def _expanded_path(path):
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
+
+
+def _rtabmap_mode(context):
+    mode = LaunchConfiguration("rtabmap_mode").perform(context).strip().lower()
+    if mode not in (LOCALIZATION_MODE, MAPPING_MODE):
+        raise RuntimeError(
+            f"rtabmap_mode must be '{LOCALIZATION_MODE}' or '{MAPPING_MODE}', got '{mode}'")
+    return mode
+
+
+def _rtabmap_database_path(context, mode):
+    return _expanded_path(LaunchConfiguration("rtabmap_database_path").perform(context))
+
+
+def _validate_rtabmap_configuration(context, *args, **kwargs):
+    mode = _rtabmap_mode(context)
+    selected_db = _rtabmap_database_path(context, mode)
+    delete_db = _launch_bool(LaunchConfiguration("rtabmap_delete_db_on_start").perform(context))
+
+    if mode == LOCALIZATION_MODE:
+        if delete_db:
+            raise RuntimeError("rtabmap_delete_db_on_start is only allowed in mapping mode")
+        if not os.path.isfile(selected_db):
+            raise RuntimeError(f"RTAB-Map localization database not found: {selected_db}")
+    else:
+        parent = os.path.dirname(selected_db)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
+    return []
+
+
+def _create_rtabmap_nodes(
+    context,
+    manage_lidar_standby,
+    standby_scan_topic,
+    rtabmap_parameters,
+    rtabmap_remappings
+):
+    mode = _rtabmap_mode(context)
+    selected_db = _rtabmap_database_path(context, mode)
+    delete_db = _launch_bool(LaunchConfiguration("rtabmap_delete_db_on_start").perform(context))
+
+    parameters = [dict(rtabmap_parameters[0], **{
+        'database_path': selected_db,
+        'Mem/IncrementalMemory': 'false' if mode == LOCALIZATION_MODE else 'true',
+        'Mem/InitWMWithAllNodes': 'true' if mode == LOCALIZATION_MODE else 'false',
+    })]
+    arguments = ['-d'] if delete_db else []
+    managed_rtabmap_remappings = rtabmap_remappings + [('scan', standby_scan_topic)]
+
+    return [
+        Node(
+            package='rtabmap_slam', executable='rtabmap', output='screen',
+            condition=UnlessCondition(manage_lidar_standby),
+            parameters=parameters,
+            remappings=rtabmap_remappings,
+            arguments=arguments),
+        Node(
+            package='rtabmap_slam', executable='rtabmap', output='screen',
+            condition=IfCondition(manage_lidar_standby),
+            parameters=parameters,
+            remappings=managed_rtabmap_remappings,
+            arguments=arguments),
+    ]
 
 
 def generate_launch_description():
@@ -39,6 +117,27 @@ def generate_launch_description():
             "standby_scan_topic",
             default_value="/diffbot/standby_scan",
             description="Managed scan topic used by RTAB-Map and ICP when lidar standby is enabled.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "rtabmap_mode",
+            default_value=LOCALIZATION_MODE,
+            description="RTAB-Map operating mode: localization or mapping.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "rtabmap_database_path",
+            default_value="~/.ros/diffbot/maps/rtabmap.db",
+            description="RTAB-Map database loaded by localization mode and written by mapping mode.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "rtabmap_delete_db_on_start",
+            default_value="false",
+            description="Delete the selected RTAB-Map database on start. Mapping mode only.",
         )
     )
 
@@ -353,21 +452,9 @@ def generate_launch_description():
         }],
     )
 
-    rtabmap_slam = Node(
-        package='rtabmap_slam', executable='rtabmap', output='screen',
-        condition=UnlessCondition(manage_lidar_standby),
-        parameters=rtabmap_parameters,
-        remappings=rtabmap_remappings,
-        arguments=['-d'])
-
-    managed_rtabmap_remappings = rtabmap_remappings + [('scan', standby_scan_topic)]
-
-    managed_rtabmap_slam = Node(
-        package='rtabmap_slam', executable='rtabmap', output='screen',
-        condition=IfCondition(manage_lidar_standby),
-        parameters=rtabmap_parameters,
-        remappings=managed_rtabmap_remappings,
-        arguments=['-d'])
+    rtabmap_nodes = OpaqueFunction(
+        function=_create_rtabmap_nodes,
+        args=[manage_lidar_standby, standby_scan_topic, rtabmap_parameters, rtabmap_remappings])
 
     lidar_standby_manager = Node(
         package='diffbot',
@@ -420,11 +507,12 @@ def generate_launch_description():
         icp_odometry,
         managed_icp_odometry,
         icp_odom_reweighter,
-        rtabmap_slam,
-        managed_rtabmap_slam,
+        rtabmap_nodes,
         lidar_standby_manager,
         nav2,
         rosbridge_server_launch
     ]
 
-    return LaunchDescription(declared_arguments + nodes)
+    validate_rtabmap_configuration = OpaqueFunction(function=_validate_rtabmap_configuration)
+
+    return LaunchDescription(declared_arguments + [validate_rtabmap_configuration] + nodes)
