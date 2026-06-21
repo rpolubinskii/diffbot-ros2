@@ -1,16 +1,5 @@
 # Copyright 2020 ros2_control Development Team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
 import launch_ros.descriptions
 import os
@@ -24,13 +13,12 @@ from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
-from launch_ros.actions import Node
 from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    # Declare arguments
+
     declared_arguments = []
     declared_arguments.append(
         DeclareLaunchArgument(
@@ -60,7 +48,6 @@ def generate_launch_description():
 
     rplidar_pkg = get_package_share_directory('rplidar_ros')
 
-    # Get URDF via xacro
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -111,7 +98,6 @@ def generate_launch_description():
         arguments=["diffbot_base_controller", "--controller-manager", "/controller_manager"],
     )
 
-    # Delay start of robot_controller after `joint_state_broadcaster`
     delay_robot_controller_spawner_after_joint_state_broadcaster_spawner = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
@@ -160,6 +146,13 @@ def generate_launch_description():
             "external_imu_filter.yaml",
         ]
     )
+    realsense_params = PathJoinSubstitution(
+        [
+            FindPackageShare("diffbot"),
+            "config",
+            "realsense_params.yaml",
+        ]
+    )
 
     ekf = Node(
         package="robot_localization",
@@ -193,32 +186,27 @@ def generate_launch_description():
         'topic_queue_size': 30,
         'sync_queue_size': 30,
         'wait_imu_to_init': True,
-        'Reg/Force3DoF': 'true'
+        'Reg/Force3DoF': 'true',
+        'Reg/Strategy': '1',
+        'RGBD/ProximityBySpace': 'true',
+        'RGBD/ProximityPathMaxNeighbors': '10',
+        'RGBD/ProximityMaxGraphDepth': '0',
+        'RGBD/ProximityOdomGuess': 'true',
+        'RGBD/ProximityPathFilteringRadius': '2.0',
+        'RGBD/OptimizeFromGraphEnd': 'false',
+        'RGBD/OptimizeMaxError': '0',
+        'Optimizer/Robust': 'true',
+        'Optimizer/Strategy': '1',
+        'Icp/MaxTranslation': '0.5',
+        'Vis/MinInliers': '12',
+        'Kp/DetectorStrategy': '8',
+        'Vis/FeatureType': '8',
+        'Rtabmap/DetectionRate': '5'
     }]
 
     rtabmap_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),
         ('odom', '/odom'),
-        # ('odom_info', '/rtabmap/odom_info'),
-        ('rgb/image', '/camera/camera/color/image_raw'),
-        ('rgb/camera_info', '/camera/camera/color/camera_info'),
-        ('depth/image', '/camera/camera/aligned_depth_to_color/image_raw')]
-
-    rgbd_odometry_parameters = [{
-        'frame_id': 'base_footprint',
-        'odom_frame_id': 'odom',
-        'publish_tf': False,
-        'approx_sync': False,
-        'topic_queue_size': 30,
-        'sync_queue_size': 30,
-        'wait_imu_to_init': True,
-        'always_check_imu_tf': False
-    }]
-
-    rgbd_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
-        ('odom', '/rtabmap/odom'),
-        ('odom_info', '/rtabmap/odom_info'),
         ('rgb/image', '/camera/camera/color/image_raw'),
         ('rgb/camera_info', '/camera/camera/color/camera_info'),
         ('depth/image', '/camera/camera/aligned_depth_to_color/image_raw')]
@@ -229,27 +217,28 @@ def generate_launch_description():
         'publish_tf': False,
         'topic_queue_size': 30,
         'sync_queue_size': 30,
-        'wait_imu_to_init': True,
+        'wait_imu_to_init': False,
         'always_check_imu_tf': True,
-        'Reg/Force3DoF': 'true'
+        'Reg/Force3DoF': 'true',
+        'Odom/ResetCountdown': '5',
+        'Icp/MaxCorrespondenceDistance': '0.3',
+        'Icp/MaxTranslation': '0.5'
     }]
 
     icp_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),
         ('odom', '/rtabmap/icp_odom'),
         ('odom_info', '/rtabmap/icp_odom_info'),
         ('scan', '/scan')]
 
     managed_icp_odometry_remappings = [
-        ('imu', '/imu/external/data_body'),
+        ('imu', '/imu/data_body'),
         ('odom', '/rtabmap/icp_odom'),
         ('odom_info', '/rtabmap/icp_odom_info'),
         ('scan', standby_scan_topic)]
 
-    # Make sure IR emitter is enabled
     depth_module = SetParameter(name='depth_module.emitter_enabled', value=1)
 
-    # Launch camera driver
     realsense = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
             get_package_share_directory('realsense2_camera'), 'launch'),
@@ -263,7 +252,11 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            'rgb_camera.profile': '640x360x15'
+            'rgb_camera.color_profile': '640x360x30',
+            'depth_module.depth_profile': '424x240x30',
+            'pointcloud.enable': 'true',
+            'spatial_filter.enable': 'true',
+            'config_file': realsense_params
         }.items(),
     )
 
@@ -322,15 +315,6 @@ def generate_launch_description():
         ],
     )
 
-    # rgbd_odometry = Node(
-    #     package='rtabmap_odom',
-    #     executable='rgbd_odometry',
-    #     name='rgbd_odometry',
-    #     output='screen',
-    #     parameters=rgbd_odometry_parameters,
-    #     remappings=rgbd_odometry_remappings,
-    # )
-
     icp_odometry = Node(
         package='rtabmap_odom',
         executable='icp_odometry',
@@ -349,6 +333,24 @@ def generate_launch_description():
         condition=IfCondition(manage_lidar_standby),
         parameters=icp_odometry_parameters,
         remappings=managed_icp_odometry_remappings,
+    )
+
+    icp_odom_reweighter = Node(
+        package='diffbot',
+        executable='diffbot_icp_odom_reweighter',
+        name='diffbot_icp_odom_reweighter',
+        output='screen',
+        parameters=[{
+            'input_odom_topic': '/rtabmap/icp_odom',
+            'imu_topic': '/imu/data_body',
+            'output_odom_topic': '/rtabmap/icp_odom_reweighted',
+            'yaw_disagreement_gain': 2.0,
+            'disagreement_deadband': 0.1,
+            'min_yaw_variance': 0.0,
+            'max_yaw_variance': 1.0,
+            'reweight_twist': True,
+            'gyro_timeout_sec': 0.5,
+        }],
     )
 
     rtabmap_slam = Node(
@@ -415,9 +417,9 @@ def generate_launch_description():
         external_imu_transform,
         ekf,
         rplidar,
-        # rgbd_odometry,
         icp_odometry,
         managed_icp_odometry,
+        icp_odom_reweighter,
         rtabmap_slam,
         managed_rtabmap_slam,
         lidar_standby_manager,

@@ -17,57 +17,29 @@ ekf_filter_node:
     odom0_config: [false, false, false,
                    false, false, false,
                    true, true, false,
-                   false, false, true,
+                   false, false, false,
                    false, false, false]
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
 
-#    odom1: /rtabmap/odom
-#    odom1_config: [false, false, false,
-#                   false, false, false,
-#                   true, false, false,
-#                   false, false, true,
-#                   false, false, false]
-#    odom1_differential: false
-#    odom1_relative: false
-#    odom1_queue_size: 10
-
-    odom2: /rtabmap/icp_odom
-    # ICP yaw is much more stable than either IMU while stationary. Fuse its
-    # heading into EKF instead of integrating biased IMU yaw rates.
-    odom2_config: [false, false, false,
+    odom1: /rtabmap/icp_odom_reweighted
+    odom1_config: [false, false, false,
                    false, false, true,
                    true, false, false,
                    false, false, true,
                    false, false, false]
-    odom2_differential: false
-    odom2_relative: false
-    odom2_queue_size: 10
+    odom1_differential: false
+    odom1_relative: false
+    odom1_queue_size: 10
 
     imu0: /imu/data_body
-    # RealSense has no magnetometer, and its gyro bias drives yaw drift while
-    # stationary. Do not fuse its yaw orientation or yaw rate into /odom.
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,
-                  false, false, false,
+                  false, false, true,
                   false, false, false]
     imu0_differential: false
     imu0_relative: false
     imu0_queue_size: 20
     imu0_remove_gravitational_acceleration: false
-
-    imu1: /imu/external/data_body
-    # The external IMU also shows absolute yaw drift even with magnetometer
-    # enabled, and its residual gyro bias still drifts /odom. Keep it available
-    # for RTAB-Map/diagnostics, but do not fuse it into EKF heading by default.
-    imu1_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false]
-    imu1_differential: false
-    imu1_relative: false
-    imu1_queue_size: 20
-    imu1_remove_gravitational_acceleration: false

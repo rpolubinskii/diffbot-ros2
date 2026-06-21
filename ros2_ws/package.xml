@@ -14,6 +14,7 @@
   <depend>action_msgs</depend>
   <depend>asio</depend>
   <depend>hardware_interface</depend>
+  <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
@@ -33,7 +34,6 @@
   <exec_depend>nav2_behaviors</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>nav2_bt_navigator</exec_depend>
-  <exec_depend>nav2_collision_monitor</exec_depend>
   <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_constrained_smoother</exec_depend>
   <exec_depend>nav2_controller</exec_depend>
@@ -54,6 +54,7 @@
   <exec_depend>rplidar_ros</exec_depend>
   <exec_depend>rtabmap_odom</exec_depend>
   <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>spatio_temporal_voxel_layer</exec_depend>
   <exec_depend>xacro</exec_depend>
 
   <export>
