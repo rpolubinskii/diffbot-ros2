@@ -586,6 +586,7 @@ def generate_launch_description():
             # pointcloud__neon_; realsense_params.yaml enables that launch-time
             # node parameter. Do not rely on the standard pointcloud.enable key:
             # the live /camera/camera node does not declare it on this build.
+            'pointcloud.enable': 'true',
             'spatial_filter.enable': 'true',
             'config_file': realsense_params
             # accelerate_gpu_with_glsl was TESTED 2026-06-20 and REJECTED. It works
