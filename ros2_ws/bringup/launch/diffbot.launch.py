@@ -3,6 +3,8 @@
 
 import launch_ros.descriptions
 import os
+import tempfile
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler
@@ -20,6 +22,13 @@ from launch_ros.substitutions import FindPackageShare
 LOCALIZATION_MODE = "localization"
 MAPPING_MODE = "mapping"
 TRUE_VALUES = {"1", "true", "yes", "on"}
+
+# Mapping mode drives slower so RTAB-Map sees less motion blur / scan distortion.
+# Only the linear upper bounds are lowered; backward (min) and rotational caps keep
+# their calibrated values (see nav2_params.yaml: vx_max 0.75, max_accel 0.7, max_decel -0.8).
+MAPPING_VX_MAX = 0.35    # m/s
+MAPPING_LIN_ACCEL = 0.4  # m/s^2
+MAPPING_LIN_DECEL = -0.5  # m/s^2
 
 
 def _launch_bool(value):
@@ -92,6 +101,46 @@ def _create_rtabmap_nodes(
             parameters=parameters,
             remappings=managed_rtabmap_remappings,
             arguments=arguments),
+    ]
+
+
+def _write_mapping_nav2_params(base_params):
+    with open(base_params) as handle:
+        params = yaml.safe_load(handle)
+
+    params['controller_server']['ros__parameters']['FollowPath']['vx_max'] = MAPPING_VX_MAX
+
+    smoother = params['velocity_smoother']['ros__parameters']
+    smoother['max_velocity'][0] = MAPPING_VX_MAX
+    smoother['max_accel'][0] = MAPPING_LIN_ACCEL
+    smoother['max_decel'][0] = MAPPING_LIN_DECEL
+
+    out_path = os.path.join(tempfile.gettempdir(), 'diffbot_nav2_params_mapping.yaml')
+    with open(out_path, 'w') as handle:
+        yaml.safe_dump(params, handle, default_flow_style=False, sort_keys=False)
+    return out_path
+
+
+def _create_nav2(context, *args, **kwargs):
+    diffbot_share = get_package_share_directory('diffbot')
+    base_params = os.path.join(diffbot_share, 'config', 'nav2_params.yaml')
+
+    if _rtabmap_mode(context) == MAPPING_MODE:
+        params_file = _write_mapping_nav2_params(base_params)
+    else:
+        params_file = base_params
+
+    return [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(diffbot_share, 'launch', 'navigation_launch.py')
+            ),
+            launch_arguments={
+                'use_sim_time': 'false',
+                'autostart': 'true',
+                'params_file': params_file,
+            }.items(),
+        )
     ]
 
 
@@ -204,14 +253,6 @@ def generate_launch_description():
         )
     )
 
-    nav2_params = PathJoinSubstitution(
-        [
-            FindPackageShare("diffbot"),
-            "config",
-            "nav2_params.yaml",
-        ]
-    )
-
     rplidar = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(rplidar_pkg, "launch", "rplidar_a1_launch.py")
@@ -265,16 +306,7 @@ def generate_launch_description():
         ],
     )
 
-    nav2 = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('diffbot'), 'launch', 'navigation_launch.py')
-        ),
-        launch_arguments={
-            'use_sim_time': 'false',
-            'autostart': 'true',
-            'params_file': nav2_params
-        }.items(),
-    )
+    nav2 = OpaqueFunction(function=_create_nav2)
 
     rtabmap_parameters = [{
         'frame_id': 'base_footprint',
