@@ -23,11 +23,8 @@ LOCALIZATION_MODE = "localization"
 MAPPING_MODE = "mapping"
 TRUE_VALUES = {"1", "true", "yes", "on"}
 
-# Mapping mode drives slower so RTAB-Map sees less motion blur / scan distortion.
-# Only the linear upper bounds are lowered; backward (min) and rotational caps keep
-# their calibrated values (see nav2_params.yaml: vx_max 0.75, max_accel 0.7, max_decel -0.8).
-MAPPING_VX_MAX = 0.35    # m/s
-MAPPING_LIN_ACCEL = 0.4  # m/s^2
+MAPPING_VX_MAX = 0.35     # m/s
+MAPPING_LIN_ACCEL = 0.4   # m/s^2
 MAPPING_LIN_DECEL = -0.5  # m/s^2
 
 
