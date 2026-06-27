@@ -186,6 +186,14 @@ def generate_launch_description():
             description="Delete the selected RTAB-Map database on start. Mapping mode only.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "enable_semantic_export",
+            default_value="true",
+            description="Publish a throttled, compressed, map-frame-posed RGB-D bundle on /dualmap/* "
+                        "for the offboard semantic map (DualMap). Off by default.",
+        )
+    )
 
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
     manage_lidar_standby = LaunchConfiguration("manage_lidar_standby")
@@ -513,6 +521,23 @@ def generate_launch_description():
         }],
     )
 
+    semantic_export = Node(
+        package='diffbot',
+        executable='diffbot_semantic_export',
+        name='diffbot_semantic_export',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration("enable_semantic_export")),
+        parameters=[{
+            'color_topic': '/camera/camera/color/image_raw',
+            'depth_topic': '/camera/camera/aligned_depth_to_color/image_raw',
+            'camera_info_topic': '/camera/camera/color/camera_info',
+            'map_frame': 'map',
+            'camera_frame': 'camera_color_optical_frame',
+            'target_rate_hz': 4.0,
+            'tf_timeout_sec': 0.1,
+        }],
+    )
+
     rosbridge_server_pkg = get_package_share_directory('rosbridge_server')
     rosbridge_server_launch = IncludeLaunchDescription(
         XMLLaunchDescriptionSource(
@@ -538,6 +563,7 @@ def generate_launch_description():
         icp_odom_reweighter,
         rtabmap_nodes,
         lidar_standby_manager,
+        semantic_export,
         nav2,
         rosbridge_server_launch
     ]

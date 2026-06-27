@@ -24,6 +24,13 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
+# Extra dependencies for the semantic export node.
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(message_filters REQUIRED)
+find_package(image_transport REQUIRED)
+
 add_library(
   diffbot
   SHARED
@@ -57,6 +64,22 @@ ament_target_dependencies(
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
+add_executable(diffbot_semantic_export
+  src/semantic_export.cpp
+)
+target_compile_features(diffbot_semantic_export PUBLIC cxx_std_17)
+ament_target_dependencies(
+  diffbot_semantic_export PUBLIC
+  rclcpp
+  sensor_msgs
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  message_filters
+  image_transport
+)
+
 pluginlib_export_plugin_description_file(hardware_interface diffbot.xml)
 
 install(
@@ -81,6 +104,9 @@ install(TARGETS diffbot_lidar_standby_manager
   DESTINATION lib/diffbot
 )
 install(TARGETS diffbot_icp_odom_reweighter
+  DESTINATION lib/diffbot
+)
+install(TARGETS diffbot_semantic_export
   DESTINATION lib/diffbot
 )
 

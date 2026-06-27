@@ -13,7 +13,10 @@
 
   <depend>action_msgs</depend>
   <depend>asio</depend>
+  <depend>geometry_msgs</depend>
   <depend>hardware_interface</depend>
+  <depend>image_transport</depend>
+  <depend>message_filters</depend>
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
@@ -21,8 +24,12 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
 
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>compressed_depth_image_transport</exec_depend>
+  <exec_depend>compressed_image_transport</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>imu_filter_madgwick</exec_depend>
