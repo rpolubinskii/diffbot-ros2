@@ -380,6 +380,7 @@ def generate_launch_description():
             get_package_share_directory('realsense2_camera'), 'launch'),
             '/rs_launch.py']),
         launch_arguments={
+            'initial_reset': 'true',
             'enable_color': 'true',
             'align_depth.enable': 'true',
             'enable_depth': 'true',
@@ -388,8 +389,8 @@ def generate_launch_description():
             'enable_gyro': 'true',
             'enable_accel': 'true',
             'unite_imu_method': '2',
-            'rgb_camera.color_profile': '640x360x30',
-            'depth_module.depth_profile': '424x240x30',
+            'rgb_camera.color_profile': '640x360x15',
+            'depth_module.depth_profile': '424x240x15',
             'pointcloud.enable': 'true',
             'spatial_filter.enable': 'true',
             'config_file': realsense_params

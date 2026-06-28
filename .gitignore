@@ -11,5 +11,5 @@ __pycache__/
 .DS_Store
 /camera/
 
-# Recorded rosbags + local odometry-analysis scratch (see bags/analyze_odom.py)
 /bags/
+/logs/
